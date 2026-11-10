@@ -1,0 +1,11 @@
+{
+  "type": "vehicle",
+  "id": "pixel-roadster",
+  "name": "Pixel Roadster",
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "pixel-16bit",
+  "entry": "vehicle.js",
+  "defaultColour": "#b3262f"
+}
