@@ -104,3 +104,10 @@ body.nav #left { width: 28vw; }
 .tile.pick .ico svg { width: 3vh; height: 3vh; }
 #callPick .tile .sub { display: block; font-size: 1.4vh; color: var(--gold); text-transform: none; }
 #callPick .txt { display: flex; flex-direction: column; }
+
+/* Apps + Settings: big, labelled, gold so they stand out */
+#corner { gap: 2vh; bottom: 3vh; }
+#corner .btn { width: 12.5vh; height: 12.5vh; flex-direction: column; gap: .8vh; padding: 0; background: var(--navy); border: 4px solid var(--gold); color: var(--gold); }
+#corner .btn svg { width: 5.5vh; height: 5.5vh; }
+#corner .lbl { font-size: 1.3vh; }
+#corner .btn:active { background: var(--gold); color: var(--navy); }

@@ -143,3 +143,11 @@ body.ringing .btn.round { width: 10vh; height: 10vh; font-size: 4.4vh; }
 .tile.pick { margin-top: 0; height: 12vh; }
 .tile.pick .ico { background: linear-gradient(135deg, #2bd47d, #12a35a); }
 .tile.pick .ico svg { width: 60%; height: 60%; }
+
+/* Apps + Settings: big, high-contrast, labelled (easy to find and hit while driving) */
+#corner { gap: 2vh; bottom: 3vh; }
+#corner .btn { width: 12.5vh; height: 12.5vh; flex-direction: column; gap: .5vh; border-radius: 3vh; padding: 0;
+  background: rgba(255,255,255,0.16); border: 2px solid rgba(255,255,255,0.38); box-shadow: 0 .8vh 3vh rgba(0,0,0,0.35); }
+#corner .btn svg { width: 5.8vh; height: 5.8vh; }
+#corner .lbl { font-size: 1.8vh; letter-spacing: .04em; color: var(--ink); }
+#corner .btn:active { background: rgba(61,139,253,0.45); }
