@@ -1,0 +1,313 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// CarView theme "Modern 3D": smooth three.js scene. Vehicle family: three-pbr (see THEMES.md).
+// The runtime (sdk/runtime.js) calls frame(dt, state) about 30 times a second and hands over the vehicle module.
+import * as THREE from '../../lib/three.module.js';
+import { RoomEnvironment } from '../../lib/RoomEnvironment.js';
+
+// Colours for each kind of sky. The scene glides between them, so dusk → night is a smooth fade.
+const SKY = {
+  day:   { top: 0x2f6fd0, mid: 0x6fa6e6, hor: 0xd7e6f2, fog: 0xa9c4dc, ground: 0x2a4024, hill: 0x5d7a8f,
+           hemiS: 0xdfeeff, hemiG: 0x2a3a22, hemi: 0.9, sunC: 0xfff1dc, sun: 2.2, env: 1.0, exp: 1.0, lamp: 0x8892a8 },
+  dusk:  { top: 0x0c1d3d, mid: 0x5a3c78, hor: 0xf08a5d, fog: 0x3a2a55, ground: 0x1a2418, hill: 0x241634,
+           hemiS: 0xffd2b0, hemiG: 0x1a2418, hemi: 0.6, sunC: 0xffb27a, sun: 1.6, env: 0.9, exp: 1.05, lamp: 0xc9a98a },
+  night: { top: 0x02040b, mid: 0x060b1a, hor: 0x0d1730, fog: 0x070c1a, ground: 0x06090f, hill: 0x050812,
+           hemiS: 0x223355, hemiG: 0x05070c, hemi: 0.25, sunC: 0x7f9fff, sun: 0.35, env: 0.35, exp: 0.9, lamp: 0xffd9a0 },
+};
+
+// Camera poses: driving (behind the car) and parked-with-something-open (rear corner view).
+const POSE = {
+  drive: { pos: new THREE.Vector3(0.5, 2.6, 8.0), look: new THREE.Vector3(1.6, 0.9, -4) },
+  open:  { pos: new THREE.Vector3(-3.6, 3.0, 7.4), look: new THREE.Vector3(2.1, 0.55, -0.2) },
+};
+const LANE_X = 1.9;          // the car drives in the right-hand lane
+
+function create(canvas, api) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  const s = new THREE.Scene();
+  s.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+  // sky dome: a three-colour gradient whose colours can change every frame
+  const skyU = { top: { value: new THREE.Color() }, mid: { value: new THREE.Color() }, hor: { value: new THREE.Color() } };
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(400, 32, 16), new THREE.ShaderMaterial({
+    uniforms: skyU, side: THREE.BackSide, depthWrite: false, fog: false,
+    vertexShader: 'varying float vy; void main(){ vy = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 hor; varying float vy;
+      void main(){ vec3 c = vy > 0.25 ? mix(mid, top, clamp((vy-0.25)/0.6,0.0,1.0)) : mix(hor, mid, clamp(vy/0.25,0.0,1.0));
+      gl_FragColor = vec4(c,1.0);
+      #include <colorspace_fragment>
+      }`,
+  }));
+  s.add(sky);
+  s.fog = new THREE.Fog(0x000000, 25, 140);
+
+  const hillMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
+  const hill = new THREE.Mesh(new THREE.CylinderGeometry(160, 160, 14, 64, 1, true), hillMat);
+  hill.position.y = 3; s.add(hill);
+
+  // road: canvas texture with lane markings; it scrolls with the real speed
+  const tc = document.createElement('canvas'); tc.width = 256; tc.height = 512; const t = tc.getContext('2d');
+  t.fillStyle = '#23262d'; t.fillRect(0, 0, 256, 512);
+  for (let i = 0; i < 4000; i++) { t.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`; t.fillRect(Math.random() * 256, Math.random() * 512, 1, 1); }
+  t.fillStyle = '#d9dde6'; t.fillRect(10, 0, 6, 512); t.fillRect(240, 0, 6, 512); t.fillRect(124, 0, 8, 260);
+  const tex = new THREE.CanvasTexture(tc);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1, 30); tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(9, 300), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }));
+  road.rotation.x = -Math.PI / 2; road.position.z = -120; s.add(road);
+  const groundMat = new THREE.MeshStandardMaterial({ roughness: 1 });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat);
+  ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; s.add(ground);
+
+  // street lights that stream past at the real speed
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x3b4252, metalness: 0.6, roughness: 0.4 });
+  const lampMat = new THREE.MeshBasicMaterial();
+  const poleGeo = new THREE.CylinderGeometry(0.06, 0.08, 6, 8), armGeo = new THREE.BoxGeometry(0.6, 0.06, 0.06), headGeo = new THREE.SphereGeometry(0.22, 16, 8);
+  const lamps = [];
+  const SPACING = 16, COUNT = 12;
+  for (let i = 0; i < COUNT; i++) for (const side of [-1, 1]) {
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.set(side * 6.2, 3, 0);
+    const arm = new THREE.Mesh(armGeo, poleMat); arm.position.set(side * 5.9, 6, 0);
+    const head = new THREE.Mesh(headGeo, lampMat); head.position.set(side * 5.6, 6, 0);
+    g.add(pole, arm, head);
+    g.position.z = 8 - i * SPACING - (side > 0 ? SPACING / 2 : 0);
+    s.add(g); lamps.push(g);
+  }
+
+  // the car
+  // the vehicle comes from a separate package (family three-pbr); it is swapped in by setVehicle()
+  let car = null;
+  const carG = new THREE.Group();
+  const sh = document.createElement('canvas'); sh.width = sh.height = 128; const shc = sh.getContext('2d');
+  const rg = shc.createRadialGradient(64, 64, 8, 64, 64, 64); rg.addColorStop(0, 'rgba(0,0,0,0.8)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+  shc.fillStyle = rg; shc.fillRect(0, 0, 128, 128);
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 2.8), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sh), transparent: true, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.01; carG.add(shadow);
+  carG.rotation.y = Math.PI / 2;               // nose points away from the camera
+  carG.position.set(LANE_X, 0, 0);
+  s.add(carG);
+
+  // scene lights
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x000000, 0.6); s.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffffff, 1); sun.position.set(-6, 8, -12); s.add(sun);
+
+  // headlight rig follows the car (not its rotation). Lights stay in the scene with intensity 0 when off,
+  // so switching them never forces a shader rebuild (that would stutter).
+  const rig = new THREE.Group(); s.add(rig);
+  const spots = [];
+  for (const xx of [-0.62, 0.62]) {
+    const sp = new THREE.SpotLight(0xfff2d0, 0, 60, 0.38, 0.6, 1.4);
+    sp.position.set(xx, 0.82, -2.3); sp.target.position.set(xx * 2, 0, -22);
+    rig.add(sp, sp.target); spots.push(sp);
+  }
+  const red = new THREE.PointLight(0xff2030, 0, 4); red.position.set(0, 0.9, 2.6); rig.add(red);
+  const pc = document.createElement('canvas'); pc.width = 128; pc.height = 256; const px = pc.getContext('2d');
+  const gr = px.createRadialGradient(64, 230, 6, 64, 150, 150);
+  gr.addColorStop(0, 'rgba(255,240,205,0.85)'); gr.addColorStop(0.45, 'rgba(255,236,196,0.35)'); gr.addColorStop(1, 'rgba(255,236,196,0)');
+  px.fillStyle = gr; px.fillRect(0, 0, 128, 256);
+  const poolMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(pc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
+  for (const xx of [-0.75, 0.75]) {               // pools of light the headlights throw on the road
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 15), poolMat);
+    pool.rotation.x = -Math.PI / 2; pool.position.set(xx, 0.02, -9.6); rig.add(pool);
+  }
+
+  // ---- weather: rain streaks (line segments) and snow flakes (points) in a box around the car ----
+  const BOX = { x0: -14, x1: 16, y1: 12, z0: -45, z1: 9 };
+  const RAIN_N = 1600, SNOW_N = 2400;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const rainPos = new Float32Array(RAIN_N * 6), rainSeed = new Float32Array(RAIN_N);
+  for (let i = 0; i < RAIN_N; i++) {
+    const x = rnd(BOX.x0, BOX.x1), y = rnd(0, BOX.y1), z = rnd(BOX.z0, BOX.z1);
+    rainPos.set([x, y, z, x, y + 0.5, z], i * 6); rainSeed[i] = rnd(0.8, 1.2);
+  }
+  const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+  const rainMat = new THREE.LineBasicMaterial({ color: 0xbcd3f5, transparent: true, opacity: 0, depthWrite: false });
+  const rain = new THREE.LineSegments(rainGeo, rainMat); rain.frustumCulled = false; rain.visible = false; s.add(rain);
+
+  const snowPos = new Float32Array(SNOW_N * 3), snowSeed = new Float32Array(SNOW_N);
+  for (let i = 0; i < SNOW_N; i++) { snowPos.set([rnd(BOX.x0, BOX.x1), rnd(0, BOX.y1), rnd(BOX.z0, BOX.z1)], i * 3); snowSeed[i] = Math.random() * 10; }
+  const snowGeo = new THREE.BufferGeometry(); snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+  const fc = document.createElement('canvas'); fc.width = fc.height = 32; const fx = fc.getContext('2d');
+  const fg = fx.createRadialGradient(16, 16, 0, 16, 16, 16); fg.addColorStop(0, 'rgba(255,255,255,1)'); fg.addColorStop(1, 'rgba(255,255,255,0)');
+  fx.fillStyle = fg; fx.fillRect(0, 0, 32, 32);
+  const snowMat = new THREE.PointsMaterial({ size: 0.2, map: new THREE.CanvasTexture(fc), transparent: true, opacity: 0, depthWrite: false });
+  const snow = new THREE.Points(snowGeo, snowMat); snow.frustumCulled = false; snow.visible = false; s.add(snow);
+  const roadMat = road.material;
+  const SNOW_GROUND = new THREE.Color(0xd9e2ec);
+  let wet = 0, white = 0, fogK = 0, flash = 0, swayT = 0, rainAmt = 0, snowAmt = 0;
+
+  function updateWeather(dt, st, v) {
+    const wx = st.wx || {};
+    const k = first ? 1 : Math.min(1, dt * 0.8);
+    rainAmt += ((wx.kind === 'rain' ? wx.amount : 0) - rainAmt) * k;
+    snowAmt += ((wx.kind === 'snow' ? wx.amount : 0) - snowAmt) * k;
+    const drift = (wx.cross || 0) / 3.6 * 0.35;           // side wind pushes rain and snow sideways (m/s)
+    // rain: falls ~9 m/s, rushes toward the camera with the car's speed, streaks stretch with speed
+    rain.visible = rainAmt > 0.02;
+    if (rain.visible) {
+      const n = Math.round(RAIN_N * rainAmt);
+      rainGeo.setDrawRange(0, n * 2);
+      const len = 0.35 + v * 0.025;
+      for (let i = 0; i < n; i++) {
+        const o = i * 6, f = rainSeed[i];
+        let x = rainPos[o] + drift * dt, y = rainPos[o + 1] - 9 * f * dt, z = rainPos[o + 2] + v * dt;
+        if (y < 0 || z > BOX.z1) { x = rnd(BOX.x0, BOX.x1); y = rnd(BOX.y1 * 0.5, BOX.y1); z = rnd(BOX.z0, BOX.z1 - 4); }
+        if (x > BOX.x1) x -= BOX.x1 - BOX.x0; else if (x < BOX.x0) x += BOX.x1 - BOX.x0;
+        rainPos[o] = x; rainPos[o + 1] = y; rainPos[o + 2] = z;
+        rainPos[o + 3] = x - drift * 0.03; rainPos[o + 4] = y + len; rainPos[o + 5] = z - v * 0.02;
+      }
+      rainGeo.attributes.position.needsUpdate = true;
+      rainMat.opacity = 0.18 + 0.32 * rainAmt;
+      rainMat.color.set(st.sky === 'night' ? 0x7f95c8 : 0xbcd3f5);
+    }
+    // snow: drifts down ~1.2 m/s, wobbles, streams past with speed
+    snow.visible = snowAmt > 0.02;
+    if (snow.visible) {
+      const n = Math.round(SNOW_N * snowAmt);
+      snowGeo.setDrawRange(0, n);
+      for (let i = 0; i < n; i++) {
+        const o = i * 3, sd = snowSeed[i];
+        let x = snowPos[o] + (Math.sin(swayT * 1.3 + sd) * 0.6 + drift) * dt;
+        let y = snowPos[o + 1] - (1.0 + (sd % 1) * 0.6) * dt, z = snowPos[o + 2] + v * dt;
+        if (y < 0 || z > BOX.z1) { x = rnd(BOX.x0, BOX.x1); y = rnd(BOX.y1 * 0.6, BOX.y1); z = rnd(BOX.z0, BOX.z1 - 4); }
+        if (x > BOX.x1) x -= BOX.x1 - BOX.x0; else if (x < BOX.x0) x += BOX.x1 - BOX.x0;
+        snowPos[o] = x; snowPos[o + 1] = y; snowPos[o + 2] = z;
+      }
+      snowGeo.attributes.position.needsUpdate = true;
+      snowMat.opacity = 0.55 + 0.4 * snowAmt;
+    }
+    // wet road gets shiny; snow whitens the fields; fog closes in
+    wet += ((rainAmt > 0.05 ? 1 : 0) - wet) * Math.min(1, dt * 0.3);
+    roadMat.roughness = 0.55 - 0.35 * wet;
+    white += (((wx.kind === 'snow' ? wx.amount : 0)) - white) * Math.min(1, dt * 0.2);
+    if (white > 0.01) groundMat.color.lerp(SNOW_GROUND, white * 0.85);
+    fogK += ((wx.fog ? 1 : rainAmt * 0.5 + snowAmt * 0.6) - fogK) * k;
+    s.fog.near = 25 - 18 * fogK; s.fog.far = 140 - 95 * fogK;
+    // thunderstorm: an occasional lightning flash
+    if (wx.thunder && Math.random() < dt * 0.12) flash = 1;
+    flash = Math.max(0, flash - dt * 3.5);
+    hemi.intensity += flash * 2.5;
+    // side wind: the car drifts and rocks a little, more with gusts
+    const sway = wx.sway || 0;
+    swayT += dt * (1.2 + sway);
+    const wob = Math.sin(swayT * 1.7) + 0.45 * Math.sin(swayT * 4.3 + 1.1);
+    if (car) car.group.rotation.x = sway * 0.022 * wob;            // roll around the car's length
+    return sway * 0.22 * wob;                              // sideways drift in metres
+  }
+
+  const cam = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 800);
+  const camPos = POSE.drive.pos.clone(), camLook = POSE.drive.look.clone();
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    cam.aspect = w / h; cam.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize); resize();
+
+  // apply a sky palette instantly (first frame) or ease toward it
+  const cur = {};
+  const tmp = new THREE.Color();
+  function easeSky(name, k) {
+    const p = SKY[name] || SKY.dusk;
+    for (const key of ['top', 'mid', 'hor', 'fog', 'ground', 'hill', 'hemiS', 'hemiG', 'sunC', 'lamp']) {
+      if (!cur[key]) cur[key] = new THREE.Color(p[key]);
+      cur[key].lerp(tmp.set(p[key]), k);
+    }
+    for (const key of ['hemi', 'sun', 'env', 'exp']) cur[key] = cur[key] == null ? p[key] : cur[key] + (p[key] - cur[key]) * k;
+    skyU.top.value.copy(cur.top); skyU.mid.value.copy(cur.mid); skyU.hor.value.copy(cur.hor);
+    s.fog.color.copy(cur.fog); groundMat.color.copy(cur.ground); hillMat.color.copy(cur.hill);
+    hemi.color.copy(cur.hemiS); hemi.groundColor.copy(cur.hemiG); hemi.intensity = cur.hemi;
+    sun.color.copy(cur.sunC); sun.intensity = cur.sun;
+    s.environmentIntensity = cur.env; renderer.toneMappingExposure = cur.exp;
+    lampMat.color.copy(cur.lamp);
+  }
+
+  // build every shader now (lights included) so switching the headlights on never stutters
+  cam.position.copy(camPos); cam.lookAt(camLook); cam.updateMatrixWorld();
+  renderer.compile(s, cam);
+
+  let first = true, beam = 0, scale = 1, carZ = 0;
+  let colourNow = null, vehicleMod = null, vehicleManifest = null;
+  const box = new THREE.Box3(), corner = new THREE.Vector3();
+
+  function buildVehicle() {
+    if (car) { carG.remove(car.group); car.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); car = null; }
+    if (!vehicleMod) return;
+    const build = vehicleMod.build || (vehicleMod.default && vehicleMod.default.build);
+    car = build({ THREE, colour: colourNow || (vehicleManifest && vehicleManifest.defaultColour) || '#1f3a6e', options: (vehicleManifest && vehicleManifest.options) || {} });
+    car.group.position.x = -car.length / 2;
+    carG.add(car.group);
+    for (const n of car.doorNames || []) car.setDoor(n, false);
+    first = true;                                       // snap doors/lights straight to the current state
+    renderer.compile(s, cam);
+  }
+
+  return {
+    setVehicle(mod, manifest) { vehicleMod = mod; vehicleManifest = manifest; buildVehicle(); },
+    /** Screen rectangle of the vehicle (CSS pixels), so the dashboard knows where a tap means "next vehicle". */
+    vehicleRect() {
+      if (!car) return null;
+      box.setFromObject(carG);
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (let i = 0; i < 8; i++) {
+        corner.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).project(cam);
+        const x = (corner.x + 1) / 2 * window.innerWidth, y = (1 - corner.y) / 2 * window.innerHeight;
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      }
+      return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    },
+    /** state: see THEMES.md (speed, lights, doors, nav, sky, openView, wx, colour, bearing) */
+    frame(dt, st) {
+      if (st.colour && st.colour !== colourNow) { colourNow = st.colour; if (car) car.setColour(colourNow); }
+      const k = first ? 1 : Math.min(1, dt * 1.2);
+      easeSky(st.sky, k);
+      const v = (st.speed || 0) / 3.6;             // metres per second
+
+      // road and street lights move toward the camera
+      tex.offset.y = (tex.offset.y + v * dt / 10) % 1;
+      for (const g of lamps) {
+        g.position.z += v * dt;
+        if (g.position.z > 12) g.position.z -= COUNT * SPACING;
+      }
+
+      // car: shrinks and moves ahead while navigating; doors, lights, wheels
+      const kk = first ? 1 : Math.min(1, dt * 3);
+      scale += ((st.nav ? 0.8 : 1) - scale) * kk;
+      carZ += ((st.nav ? -3 : 0) - carZ) * kk;
+      const drift = updateWeather(dt, st, v);
+      carG.scale.setScalar(scale); carG.position.z = carZ; carG.position.x = LANE_X + drift;
+      rig.position.set(LANE_X, 0, carZ); rig.scale.setScalar(scale);
+      const on = st.lights === true;
+      if (car) {
+        for (const n of car.doorNames || []) car.setDoor(n, !!(st.doors && st.doors[n]));
+        if (first && car.snapDoors) car.snapDoors();
+        car.update(dt, st.speed || 0);
+        car.setLights(on);
+      }
+      beam += ((on ? 1 : 0) - beam) * (first ? 1 : Math.min(1, dt * 4));
+      for (const sp of spots) sp.intensity = 900 * beam;
+      red.intensity = 2.5 * beam;
+      poolMat.opacity = 0.55 * beam * (st.sky === 'day' ? 0.35 : 1);
+
+      // camera glides between the driving view and the "something is open" view
+      const pose = st.openView ? POSE.open : POSE.drive;
+      const kc = first ? 1 : Math.min(1, dt * 1.6);
+      camPos.lerp(pose.pos, kc); camLook.lerp(pose.look, kc);
+      cam.position.copy(camPos); cam.lookAt(camLook);
+
+      renderer.render(s, cam);
+      first = false;
+    },
+    dispose() {
+      window.removeEventListener('resize', resize);
+      renderer.dispose();
+    },
+  };
+}
+
+export default { create };

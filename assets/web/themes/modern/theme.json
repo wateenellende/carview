@@ -1,0 +1,13 @@
+{
+  "type": "theme",
+  "id": "modern",
+  "name": "Modern 3D",
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "three-pbr",
+  "entry": "theme.js",
+  "style": "theme.css",
+  "defaultVehicle": "logan-mcv",
+  "hud": { "speedPad": 0, "warnIcon": true }
+}
