@@ -1,0 +1,9 @@
+# build output
+build/
+*.apk
+
+# signing key: never publish (whoever has it can ship "official" CarView updates)
+*.keystore
+*.jks
+keystore.password
+*.idsig
