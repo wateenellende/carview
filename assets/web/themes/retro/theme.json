@@ -1,0 +1,13 @@
+{
+  "type": "theme",
+  "id": "retro",
+  "name": "Retro 16-bit",
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "pixel-16bit",
+  "entry": "theme.js",
+  "style": "theme.css",
+  "defaultVehicle": "pixel-estate",
+  "hud": { "speedPad": 3, "warnIcon": false }
+}
