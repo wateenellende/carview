@@ -48,8 +48,13 @@ $zip.Dispose()
 Run "$bt\zipalign.exe" @('-p', '-f', '4', "$out\base.apk", "$out\aligned.apk")
 
 Write-Host '5/6 sign'
-$ks = Join-Path $proj 'carview.keystore'
-$pwFile = Join-Path $proj 'keystore.password'
+# The signing key lives outside the repository (never commit it): CARVIEW_KEYSTORE_DIR, else
+# %USERPROFILE%\carview-tools\signing, else this folder. Keep a backup: without it you cannot update an installed CarView.
+$keyDir = if ($env:CARVIEW_KEYSTORE_DIR) { $env:CARVIEW_KEYSTORE_DIR }
+          elseif (Test-Path (Join-Path $tools 'signing\carview.keystore')) { Join-Path $tools 'signing' }
+          else { $proj }
+$ks = Join-Path $keyDir 'carview.keystore'
+$pwFile = Join-Path $keyDir 'keystore.password'
 if (-not (Test-Path $ks)) {
     $pw = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
     Set-Content -Path $pwFile -Value $pw -NoNewline -Encoding ascii
