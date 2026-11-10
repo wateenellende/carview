@@ -18,8 +18,8 @@ Goal: people pick (and search for) their own kind of car, with the colour picker
 
 ## Other open items
 
-- [ ] Doors: the Hiworld CAN box (Renault → Dacia → "public") sends no door status for a 2014 Logan MCV II
-      (see docs/FIRMWARE.md). Try other CAN-box profiles; otherwise consider an OBD route.
+- [ ] Doors: the Hiworld CAN box sends no door status for a 2014 Logan MCV II with any profile tried, engine on or off
+      (see docs/FIRMWARE.md). Next: read door states from the body computer (UCH) over OBD-II with a Wi-Fi/USB adapter.
 - [ ] Lights show "--" after a restart until the switch moves (the firmware only reports changes).
 - [ ] Internet on the road (data SIM in the head unit, or phone hotspot).
 - [ ] Fuel / range / trip computer; volume by voice; reading messages aloud; speed limit.
