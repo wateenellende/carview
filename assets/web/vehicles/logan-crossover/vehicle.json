@@ -1,0 +1,12 @@
+{
+  "type": "vehicle",
+  "id": "logan-crossover",
+  "name": "Logan Crossover",
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "three-pbr",
+  "entry": "../logan-mcv/vehicle.js",
+  "options": { "wheelRadius": 0.335, "rideHeight": 0.07, "archTube": 0.06 },
+  "defaultColour": "#d9772b"
+}

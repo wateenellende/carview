@@ -1,0 +1,11 @@
+{
+  "type": "vehicle",
+  "id": "logan-mcv",
+  "name": "Logan MCV",
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "three-pbr",
+  "entry": "vehicle.js",
+  "defaultColour": "#1f3a6e"
+}
