@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>CarView</title>
+<link rel="stylesheet" href="host.css">
+<link rel="stylesheet" href="themes/modern/theme.css" id="theme-css">
+</head>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<body class="theme-modern">
+<!-- the active theme draws the road, sky and vehicle in this sandboxed frame (no access to phone, apps or network) -->
+<iframe id="scene" title="scene"></iframe>
+<!-- catches taps on the vehicle (tap = next vehicle) and swipes; sits above the scene, below the panels -->
+<div id="tapLayer"></div>
+
+<div id="status" class="t glass">
+  <span id="dir">--</span><span id="wx"></span><span id="temp">--&deg;C</span><span id="lights" class="off">Lights --</span>
+</div>
+
+<div id="phoneBox">
+  <span class="btn round green" id="phoneBtn" title="Phone"><svg viewBox="0 0 24 24" width="55%" height="55%"><path fill="currentColor" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg></span>
+  <span class="btn round red" id="hangBtn" title="Hang up" hidden><svg viewBox="0 0 24 24" width="55%" height="55%"><path fill="currentColor" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg></span>
+  <div id="callInfo" class="glass" hidden><div id="callState" class="s">Incoming call</div><div id="callWho" class="t"></div></div>
+</div>
+<div id="compass" class="glass" title="Heading">
+  <svg viewBox="-50 -50 100 100"><g id="rose">
+    <circle r="44" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="2"/>
+    <path d="M0,-40 L7,-6 L0,-12 L-7,-6 Z" fill="#ff5a5f"/><path d="M0,40 L7,6 L0,12 L-7,6 Z" fill="currentColor" fill-opacity=".55"/>
+    <text y="-24" text-anchor="middle" font-size="13" fill="#ff8a8f">N</text>
+  </g><text id="hdg" y="34" text-anchor="middle" font-size="12" fill="currentColor"></text></svg>
+</div>
+
+<div id="sat" class="s">-- satellites</div>
+
+<div id="speedBox"><div id="speed">--</div><div class="s unit">km/h</div></div>
+
+<div id="left" class="px glass">
+  <div id="dests">
+    <div class="s cap">Drive to</div>
+    <div class="tile" data-i="0"><span class="ico">&#8962;</span><span class="txt"><span class="nm">Home</span><span class="sub">From Google Maps</span></span></div>
+    <div class="tile" data-i="1"><span class="ico">&#9635;</span><span class="txt"><span class="nm">Work</span><span class="sub">From Google Maps</span></span></div>
+    <div class="tile" data-i="2"><span class="ico">&#127908;</span><span class="txt"><span class="nm">Where to?</span><span class="sub">Say a place</span></span></div>
+  </div>
+  <div id="turn" hidden>
+    <div class="turnHead"><span class="s cap">Next turn</span><span class="btn round small" id="navClose" title="Stop navigation">&#10005;</span></div>
+    <div class="turnRow"><div class="turnBox"><img id="turnIcon" alt=""><span id="turnArrow">&#8599;</span></div><div class="turnTxt"><div id="turnDist">--</div><div id="turnStreet" class="t"></div></div></div>
+    <div id="turnSub" class="s"></div>
+    <div class="row"><span class="btn wide" id="mapBtn">Map</span><span class="btn wide" id="splitBtn">Split</span><span class="btn wide stop" id="navStop">Stop</span></div>
+  </div>
+</div>
+
+<div id="right" class="px glass">
+  <div class="s cap" id="musicApp">Spotify</div>
+  <div class="musicRow">
+    <div id="art"></div>
+    <div class="meta"><div id="title" class="t">Nothing playing</div><div id="artist" class="s"></div></div>
+  </div>
+  <div id="bar"><div id="barFill"></div></div>
+  <div class="row ctl">
+    <span class="btn" id="prev">&#9664;&#9664;</span>
+    <span class="btn hot" id="play">&#9654;</span>
+    <span class="btn" id="next">&#9654;&#9654;</span>
+  </div>
+  <div class="row more"><span class="btn wide" id="search">Search</span><span class="btn wide" id="spotify">Spotify</span></div>
+  <div id="musicHint" class="s" hidden>Tap to allow music access</div>
+</div>
+
+<div id="mic" class="t glass">&#127908; Hey Google</div>
+<div id="corner"><span class="btn glass" id="appsBtn">&#9638;</span><span class="btn glass" id="setBtn">&#9881;</span></div>
+<div id="warn" class="blink t" hidden>Driver door open</div>
+<div id="toast" class="t glass" hidden></div>
+
+<div id="apps" class="sheet" hidden>
+  <div class="sheetHead"><span class="t">Apps</span><span class="btn" id="appsClose">&#10005;</span></div>
+  <div id="appGrid"></div>
+</div>
+
+<div id="callPick" class="sheet" hidden>
+  <div class="sheetHead"><span class="t" id="callPickTitle">Who do you want to call?</span><span class="btn" id="callPickClose">&#10005;</span></div>
+  <div id="callPickList"></div>
+</div>
+
+<div id="settings" class="sheet" hidden>
+  <div class="sheetHead"><span class="t">Settings</span><span class="btn" id="setClose">&#10005;</span></div>
+  <div class="setBody">
+    <div class="s cap">Theme</div>
+    <div class="row wrap" id="themeRow">
+    </div>
+    <div class="s cap">Vehicle (or tap the car)</div>
+    <div class="row wrap" id="vehicleRow"></div>
+    <div class="s cap">Car colour</div>
+    <div id="colours"></div>
+    <div class="s cap">Destinations</div>
+    <div class="s hint">Home and Work come from Google Maps. To change them, set them in Google Maps (Saved &rarr; Labelled). "Where to?" and the voice button take any place: "navigate to the station".</div>
+    <div class="s cap">Spotify (play songs by voice)</div>
+    <div class="s hint" id="spHint">Create a free app at developer.spotify.com &rarr; Dashboard &rarr; Create app. Redirect URI: <b>http://127.0.0.1:8977/callback</b>, API: Web API. Then paste its Client ID here and tap Connect.</div>
+    <div class="destRow"><input class="ad" id="spClient" placeholder="Spotify Client ID" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><span class="btn wide" id="spConnect">Connect Spotify</span><span class="btn wide" id="spDisconnect">Disconnect</span></div>
+    <div class="s" id="spStatus">Not connected</div>
+    <div class="s cap">Sky</div>
+    <div class="row" id="skyRow">
+      <span class="btn wide" data-sky="auto">Time of day</span>
+      <span class="btn wide" data-sky="dusk">Always sunset</span>
+    </div>
+    <div class="s cap">Android</div>
+    <div class="row"><span class="btn wide" id="sysSettings">Android settings</span><span class="btn wide" id="mediaAccess">Music access</span></div>
+    <div class="s cap">Themes and vehicles</div>
+    <div class="s hint">Install a theme or vehicle package (.zip). Packages only draw the scene: they cannot reach your phone, apps or the internet. How to make one: THEMES.md.</div>
+    <div class="row"><span class="btn wide" id="pkgAdd">Add theme or vehicle (.zip)</span></div>
+    <div id="pkgList"></div>
+    <div class="s cap">About</div>
+    <div class="s about">CarView 0.6 &middot; Free software: GPL-3.0-or-later (licenses/GPL-3.0.txt) &middot; Weather Open-Meteo.com (CC BY 4.0) &middot; 3D engine three.js (MIT) &middot; Pixel font Press Start 2P by CodeMan38 (SIL Open Font License, see licenses/)</div>
+  </div>
+</div>
+
+<script src="packages.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
