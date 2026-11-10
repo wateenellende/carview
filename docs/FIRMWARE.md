@@ -14,7 +14,8 @@ signals below are from the firmware; nothing here needs root.
 | `com.zjinnova.zlink.action.OUT_DARK_STOP`  | lights off |
 
 Any app can register a receiver (`RECEIVER_EXPORTED` on Android 13+). Only changes are announced; the state at
-start-up is unknown until the switch moves.
+start-up is unknown until the switch moves. On the MCU side the same switch arrives ~0.5 s earlier as TWUtil message
+`what = 0x0204`, `arg1` = 1 (on) / 0 (off), `arg2` = 2560.
 
 ## Phone calls (Bluetooth app `com.tw.bt`, gocsdk module)
 
@@ -65,9 +66,10 @@ polls about ten types (98, 38, 35, 0, 232, 19, 20, 24, 72, 97 with this box) eve
 
 **Firmware bug:** `com.tw.service` crashes (`ArrayIndexOutOfBoundsException: length=2; index=2` in
 `TWService.m.a`) on type 35 with a 2-byte payload, logged as `what=1281arg1=35arg2=2`, so that data never reaches
-any app. With the Hiworld box configured as Renault → Dacia → "public", none of the polled types changed when doors
-opened, so live door status is still unknown for this car (open question: another CAN-box profile, or a different
-message number). Use `tools/doorspy` to investigate your own car.
+any app. With the Hiworld box configured as Renault → Dacia → "public" on a 2014 Dacia Logan MCV II, a full test (all 64
+message numbers `com.tw.service` handles, every door and the tailgate opened in turn, the headlights as a control)
+showed **no message at all for the doors**, while the lights appeared as `0x0204`. So this CAN-box profile does not
+report door status for that car; another profile might. Use `tools/doorspy` to investigate your own car.
 
 ## Voice assistant
 
