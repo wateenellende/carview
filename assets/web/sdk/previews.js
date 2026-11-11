@@ -90,8 +90,10 @@ async function renderModern(item) {
     const len = vehicle.length || item.options?.length || 4.5;
     const h = item.options?.height || (item.options?.roofHeight ?? 1.6);
     // Fixed rear three-quarter studio view: show the rear lights, side and roof.
-    camera.position.set(-len * 0.68, Math.max(2.6, h * 1.65), -len * 0.78);
-    camera.lookAt(len * 0.47, Math.max(0.6, h * 0.50), 0);
+    // Lower, closer rear three-quarter camera reveals the actual doors, wheel
+    // openings and belt line rather than making the cars look like tiny toys.
+    camera.position.set(-len * 0.44, Math.max(1.82, h * 1.20), -len * 0.65);
+    camera.lookAt(len * 0.47, Math.max(0.60, h * 0.54), 0);
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
     return canvas.toDataURL('image/png');
