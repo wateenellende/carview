@@ -25,7 +25,8 @@ CarView is free software under **GPL-3.0-or-later**. Packages you publish for it
   You may invent a new family for a new style (for example `vector-flat`). Then you must ship at least one vehicle
   for it, and you write down its vehicle contract in your theme's README.
 * The user picks the theme in **Settings → Theme**, and switches vehicles by **tapping the car** (or in
-  Settings → Vehicle). The car colour is remembered per vehicle.
+  Settings → Vehicle). The car colour is remembered per vehicle. The vehicle selector also searches the
+  catalogue's `make`, `model`, `body`, `years`, `tags`, name, and id.
 
 ## 2. What a package looks like
 
@@ -91,6 +92,20 @@ package with the same id as a built-in one overrides the built-in.
 
 `options` (optional) is passed to the vehicle code unchanged, so one vehicle file can make several cars.
 The built-in *Logan Crossover* is just the *Logan MCV* file with different options.
+For the additional six 3D body styles, built-in vehicle manifests reuse
+`../model-builder/vehicle.js` and specify these `options` in **metres**:
+`length`, `width`, `height`, `rearOverhang`, `wheelbase`, `wheelRadius`,
+`groundClearance`, `beltHeight`, `cabinRear`, `cabinFront`,
+`roofFlatStart`, `roofFlatEnd`, `doors` (2 or 4), and `bodyStyle`
+(`hatchback`, `coupe`, `saloon`, `suv`, `pickup`, `van`).
+The rear bumper is at x=0. A detailed example and validation checklist are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+For Retro, built-in model manifests can use `../pixel-builder/vehicle.js`
+with `options: { "bodyStyle": "..." }`; the Retro renderer forwards those
+options to `draw()`. **Both shared module entry paths are for the built-in
+catalogue only.** A standalone ZIP must include its own renderer file and use
+an entry relative to its own directory, without `../`.
 `defaultColour` (optional) is used until the user picks a colour for this vehicle.
 
 ## 3. How a theme runs (and what it can't do)
@@ -184,7 +199,7 @@ Use real-world sizes in metres; the theme positions, scales and lights the car. 
 // vehicle.js
 export function draw(g, p) {
   // g: CanvasRenderingContext2D of the 320×180 scene (no smoothing)
-  // p: { cx, by, scale, horizon, colour, lit, doors, speed, time, shade(hex, f), rect(x,y,w,h,c), poly(points, c, alpha) }
+  // p: { cx, by, scale, horizon, colour, lit, doors, speed, time, options, shade(hex, f), rect(x,y,w,h,c), poly(points, c, alpha) }
   //   cx = horizontal centre, by = bottom of the car, scale ≈ 1 (0.72 while navigating), horizon = y of the horizon
   //   shade(hex, -0.3) darkens, shade(hex, 0.3) lightens; rect/poly draw pixel-snapped shapes
   return { x, y, w, h };   // the box you drew, in scene pixels (used for tapping)
@@ -251,6 +266,7 @@ Tap the car to make sure your `vehicleRect` is right.
 
 1. `vehicle.json` with the right `family` and an `entry`.
 2. `vehicle.js` implementing that family's contract from section 4: doors and tailgate that open, lights that
-   glow, a colour that can be changed.
+   glow, a colour that can be changed. A built-in catalogue variant may instead point to a shared builder
+   with a complete `options` geometry; standalone ZIPs must contain their own code.
 3. Real proportions (for 3D: metres), drawn from behind as the main view.
 4. Zip, install, then tap the car in a theme of that family until yours appears.
