@@ -49,7 +49,7 @@ class Float32BufferAttribute {
   constructor(array, itemSize) { this.array = array; this.itemSize = itemSize; }
 }
 const THREE = { Group, Mesh, Shape, ExtrudeGeometry: Geometry, BoxGeometry: Geometry,
-  CylinderGeometry: Geometry, TorusGeometry: Geometry, SphereGeometry: Geometry,
+  CylinderGeometry: Geometry, TorusGeometry: Geometry, CircleGeometry: Geometry, SphereGeometry: Geometry,
   CapsuleGeometry: Geometry, TubeGeometry: Geometry, PlaneGeometry: Geometry,
   CatmullRomCurve3: Geometry, BufferGeometry, Float32BufferAttribute,
   MeshPhysicalMaterial: Material, MeshStandardMaterial: Material, Vector3: Vec, DoubleSide: 2 };
