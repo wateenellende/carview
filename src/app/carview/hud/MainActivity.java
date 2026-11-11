@@ -123,7 +123,8 @@ public class MainActivity extends Activity {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             startLocation();
         } else {
-            requestPermissions(new String[] { Manifest.permission.ACCESS_FINE_LOCATION }, REQ_LOCATION);
+            // Android 12+ ignores a request for FINE location unless COARSE is requested in the same call.
+            requestPermissions(new String[] { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }, REQ_LOCATION);
         }
     }
 
@@ -131,7 +132,7 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != REQ_LOCATION) return;
-        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) startLocation();
+        startLocation();                   // starts only if precise location was granted (GPS speed needs it)
         send("access", access().toString());
     }
 
