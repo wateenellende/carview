@@ -84,7 +84,9 @@ function vehicleColour(v) {
   cfg.vcolour = cfg.vcolour || {};
   return (v && cfg.vcolour[v.manifest.id]) || (v && v.manifest.defaultColour) || cfg.colour;
 }
-const SANDBOX = location.protocol !== 'file:';        // a desktop preview from disk can't load modules into a sandboxed frame
+// The scene frame is sealed (sandboxed) on the head unit. A desktop preview from disk can't load modules into a
+// sealed frame, and some preview browsers can't either: ?nosandbox=1 is for previews only (the app never sets it).
+const SANDBOX = location.protocol !== 'file:' && !(location.hostname === '127.0.0.1' && /[?&]nosandbox=1/.test(location.search));
 const urlOf = (p, file) => '../' + p.base + file;     // relative to sdk/scene.html
 const vehicleMsg = (v) => (v ? { url: urlOf(v, v.manifest.entry), base: v.base, manifest: v.manifest } : null);
 let hud = {}, vehicleRect = null;
@@ -711,7 +713,7 @@ if (Native) {
     onCar('nav', { title: (q.get('dist') || '160') + ' m', text: 'Turn ' + (scene === 'turnleft' ? 'left' : 'right') + ' onto Stationsweg', sub: 'Arrive 10:52 · 14 km' });
     if (q.get('dist')) window.DEMO_DIST = parseFloat(q.get('dist'));
   }
-  if (scene === 'corner') { turn.rate = parseFloat(q.get('rate') || '20'); window.DEMO_RATE = turn.rate; }
+  if (scene === 'corner' || q.get('rate')) { turn.rate = parseFloat(q.get('rate') || '20'); window.DEMO_RATE = turn.rate; }
   if (scene !== 'night' && scene !== 'day') cfg.sky = 'dusk';
   if (scene === 'day') { cfg.sky = 'auto'; car.temp = { c: 14, day: true }; Date.prototype.getHours = () => 12; }
   if (q.get('sheet') === 'settings') openSettings();
