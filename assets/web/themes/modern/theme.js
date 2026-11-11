@@ -56,33 +56,78 @@ function create(canvas, api) {
   const tex = new THREE.CanvasTexture(tc);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1, 1); tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  // The road is a strip of 2 m segments so it can bend: see roadOffset() and the "bends" part of frame().
-  const SEG = 2, ROAD_Z0 = 30, ROAD_N = 150, HALF = 4.5;
-  const roadPos = new Float32Array((ROAD_N + 1) * 6), roadUv = new Float32Array((ROAD_N + 1) * 4);
-  const roadNrm = new Float32Array((ROAD_N + 1) * 6), roadIdx = [];
-  for (let i = 0; i <= ROAD_N; i++) {
-    const z = ROAD_Z0 - i * SEG, v = (ROAD_Z0 - z) / 10;           // texture repeats every 10 m
-    roadPos.set([-HALF, 0, z, HALF, 0, z], i * 6);
-    roadUv.set([0, v, 1, v], i * 4);
-    roadNrm.set([0, 1, 0, 0, 1, 0], i * 6);
-    if (i < ROAD_N) { const a = i * 2; roadIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  // ---- Road: one continuous path, so it always connects and can turn a real corner ----
+  // The main road follows how the car is actually driving: its bend right under the car comes from the GPS turn
+  // rate (or a steering angle), the road behind curves the same way, and ahead it slowly straightens out.
+  // A turn announced by navigation is a SIDE ROAD that splits off at the remaining distance; if the driver
+  // takes it, GPS bends the main road the same way and the two merge; if not, it simply passes by.
+  const SEG = 2, S_MIN = -30, ROAD_N = 150, HALF = 4.5, BRANCH_N = 70;
+  const I0 = -S_MIN / SEG;                                          // index of the sample under the car
+  const PX = new Float32Array(ROAD_N + 1), PZ = new Float32Array(ROAD_N + 1), PH = new Float32Array(ROAD_N + 1);
+  const roadMaterial = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 });
+  function makeStrip(n) {
+    const pos = new Float32Array((n + 1) * 6), uv = new Float32Array((n + 1) * 4), nrm = new Float32Array((n + 1) * 6), idx = [];
+    for (let i = 0; i <= n; i++) {
+      const v = i * SEG / 10;                                     // texture repeats every 10 m along the road
+      uv.set([0, v, 1, v], i * 4); nrm.set([0, 1, 0, 0, 1, 0], i * 6);
+      if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    geo.setIndex(idx);
+    const mesh = new THREE.Mesh(geo, roadMaterial); mesh.frustumCulled = false; s.add(mesh);
+    return { mesh, pos, geo };
   }
-  const roadGeo = new THREE.BufferGeometry();
-  roadGeo.setAttribute('position', new THREE.BufferAttribute(roadPos, 3));
-  roadGeo.setAttribute('uv', new THREE.BufferAttribute(roadUv, 2));
-  roadGeo.setAttribute('normal', new THREE.BufferAttribute(roadNrm, 3));
-  roadGeo.setIndex(roadIdx);
-  const road = new THREE.Mesh(roadGeo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }));
-  road.frustumCulled = false; s.add(road);
-
-  // Road bends: an impression, not a map. bend.k = curvature of the real turn now (from the GPS turn rate);
-  // an upcoming turn from navigation starts at bend.at metres ahead and slides towards the car as you drive.
-  const bend = { k: 0, at: 999, dir: 0, amount: 0, yaw: 0 };
-  function roadOffset(sAhead) {                  // sideways shift (m, + = right) of the road sAhead metres in front
-    if (sAhead <= 0) return 0;
-    let x = bend.k * sAhead * sAhead / 2;
-    if (bend.amount > 0.01 && sAhead > bend.at) { const u = sAhead - bend.at; x += bend.dir * bend.amount * 0.045 * u * u; }
-    return Math.max(-400, Math.min(400, x));
+  // write a strip along centre points (x, z, heading h; h = 0 straight ahead, + = turning right)
+  function writeStrip(strip, n, X, Z, H, half, y) {
+    for (let i = 0; i <= n; i++) {
+      const rx = Math.cos(H[i]) * half, rz = Math.sin(H[i]) * half;    // to the right of the road
+      strip.pos.set([X[i] - rx, y, Z[i] - rz, X[i] + rx, y, Z[i] + rz], i * 6);
+    }
+    strip.geo.attributes.position.needsUpdate = true;
+  }
+  const road = makeStrip(ROAD_N), branch = makeStrip(BRANCH_N);
+  const BX = new Float32Array(BRANCH_N + 1), BZ = new Float32Array(BRANCH_N + 1), BH = new Float32Array(BRANCH_N + 1);
+  // onMain: how much the navigation turn is part of the main road (far away); split: how much it is a side road
+  // (close by, and the car is NOT turning that way). Close by and turning that way: the GPS bend alone (merged).
+  const bend = { k: 0, at: 999, dir: 0, amount: 0, yaw: 0, onMain: 0, split: 0 };
+  const TURN_R = 12;                                         // radius of a navigation turn, metres
+  function navCurvature(sAt) {
+    if (bend.onMain < 0.01 || !bend.dir) return 0;
+    const u = sAt - bend.at, arc = bend.amount * Math.PI / 2 * TURN_R;
+    return u >= 0 && u <= arc ? bend.onMain * bend.dir / TURN_R : 0;
+  }
+  const curvature = (sAt) => (sAt < 0 ? bend.k : bend.k * Math.max(0, 1 - sAt / 40)) + navCurvature(sAt);
+  function layRoad(originZ) {
+    PX[I0] = 0; PZ[I0] = originZ; PH[I0] = 0;
+    for (let i = I0 + 1; i <= ROAD_N; i++) {              // forwards from the car
+      const h = PH[i - 1] + curvature(S_MIN + (i - 0.5) * SEG) * SEG, hm = (PH[i - 1] + h) / 2;
+      PX[i] = PX[i - 1] + Math.sin(hm) * SEG; PZ[i] = PZ[i - 1] - Math.cos(hm) * SEG; PH[i] = h;
+    }
+    for (let i = I0 - 1; i >= 0; i--) {                   // backwards: the road we came from
+      const h = PH[i + 1] - curvature(S_MIN + (i + 0.5) * SEG) * SEG, hm = (PH[i + 1] + h) / 2;
+      PX[i] = PX[i + 1] - Math.sin(hm) * SEG; PZ[i] = PZ[i + 1] + Math.cos(hm) * SEG; PH[i] = h;
+    }
+    writeStrip(road, ROAD_N, PX, PZ, PH, HALF, 0);
+  }
+  function pathAt(sAt) {                                  // centre point and heading sAt metres along the road
+    const f = Math.max(0, Math.min(ROAD_N - 1e-3, (sAt - S_MIN) / SEG)), i = Math.floor(f), w = f - i;
+    return { x: PX[i] + (PX[i + 1] - PX[i]) * w, z: PZ[i] + (PZ[i + 1] - PZ[i]) * w, h: PH[i] + (PH[i + 1] - PH[i]) * w };
+  }
+  function layBranch() {                                  // side road for the navigation turn
+    const show = bend.split > 0.02 && bend.amount > 0.02 && bend.dir !== 0 && bend.at < 260;
+    branch.mesh.visible = show;
+    if (!show) return;
+    const p0 = pathAt(bend.at), R = TURN_R, angle = bend.amount * bend.split * Math.PI / 2, arc = angle * R;
+    BX[0] = p0.x; BZ[0] = p0.z; BH[0] = p0.h;
+    for (let j = 1; j <= BRANCH_N; j++) {
+      const u = (j - 0.5) * SEG, h = p0.h + bend.dir * Math.min(j * SEG, arc) / R;
+      const hm = (BH[j - 1] + h) / 2;
+      BX[j] = BX[j - 1] + Math.sin(hm) * SEG; BZ[j] = BZ[j - 1] - Math.cos(hm) * SEG; BH[j] = h;
+    }
+    writeStrip(branch, BRANCH_N, BX, BZ, BH, HALF * 0.9, 0.006);
   }
   const groundMat = new THREE.MeshStandardMaterial({ roughness: 1 });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat);
@@ -100,7 +145,7 @@ function create(canvas, api) {
     const arm = new THREE.Mesh(armGeo, poleMat); arm.position.set(side * 5.9, 6, 0);
     const head = new THREE.Mesh(headGeo, lampMat); head.position.set(side * 5.6, 6, 0);
     g.add(pole, arm, head);
-    g.position.z = 8 - i * SPACING - (side > 0 ? SPACING / 2 : 0);
+    g.userData.s = -8 + i * SPACING + (side > 0 ? SPACING / 2 : 0);   // metres along the road from the car
     s.add(g); lamps.push(g);
   }
 
@@ -162,7 +207,7 @@ function create(canvas, api) {
   fx.fillStyle = fg; fx.fillRect(0, 0, 32, 32);
   const snowMat = new THREE.PointsMaterial({ size: 0.2, map: new THREE.CanvasTexture(fc), transparent: true, opacity: 0, depthWrite: false });
   const snow = new THREE.Points(snowGeo, snowMat); snow.frustumCulled = false; snow.visible = false; s.add(snow);
-  const roadMat = road.material;
+  const roadMat = roadMaterial;
   const SNOW_GROUND = new THREE.Color(0xd9e2ec);
   let wet = 0, white = 0, fogK = 0, flash = 0, swayT = 0, rainAmt = 0, snowAmt = 0;
 
@@ -296,31 +341,33 @@ function create(canvas, api) {
 
       // road and street lights move toward the camera
       tex.offset.y = (tex.offset.y + v * dt / 10) % 1;
-      for (const g of lamps) {
-        g.position.z += v * dt;
-        if (g.position.z > 12) g.position.z -= COUNT * SPACING;
-        g.position.x = roadOffset(carZ - g.position.z);   // street lights follow the bend
-      }
-
-      // bends: steering angle if a car ever provides one, else the real turn rate from the GPS heading,
-      // plus the next turn from navigation (distance already counted down by the dashboard from the speed)
+      // bends: steering angle if a car ever provides one, else the real turn rate from the GPS heading;
+      // the navigation turn (distance counted down by the dashboard from the speed) becomes a side road
       const kb = first ? 1 : Math.min(1, dt * 2);
       const kNow = st.steer != null ? Math.tan(st.steer * Math.PI / 180) / 2.6
         : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
-      bend.k += (Math.max(-0.08, Math.min(0.08, kNow)) - bend.k) * kb;
+      bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * kb;
       const nav = st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
-      const near = nav ? Math.min(1, Math.max(0, (180 - nav.distance) / 60)) : 0;   // fades in from 180 m away
+      const near = nav ? Math.min(1, Math.max(0, (200 - nav.distance) / 60)) : 0;   // fades in from ~200 m away
       bend.amount += ((nav ? nav.amount * near : 0) - bend.amount) * kb;
-      if (nav) { bend.dir = nav.dir; bend.at = nav.distance; }
-      for (let i = 0; i <= ROAD_N; i++) {
-        const off = roadOffset(carZ - (ROAD_Z0 - i * SEG));
-        roadPos[i * 6] = off - HALF; roadPos[i * 6 + 3] = off + HALF;
+      if (nav) { bend.dir = nav.dir; bend.at = Math.max(0, nav.distance); }
+      // far away: the turn is a bend in the main road; close by (about 2.5 s of driving, 15-40 m): merge if the
+      // car is turning the same way (GPS), otherwise split it off as a side road
+      const mergeDist = Math.max(15, Math.min(40, v * 2.5));
+      const close = !!nav && nav.distance < mergeDist;
+      const agree = close && Math.abs(bend.k) > 0.008 && Math.sign(bend.k) === nav.dir;
+      bend.onMain += ((nav && !close ? 1 : 0) - bend.onMain) * kb;
+      bend.split += ((close && !agree ? 1 : 0) - bend.split) * kb;
+      layRoad(carZ);
+      layBranch();
+      for (const g of lamps) {                            // street lights stand along the main road
+        g.userData.s -= v * dt;
+        if (g.userData.s < -14) g.userData.s += COUNT * SPACING;
+        const p = pathAt(g.userData.s);
+        g.position.set(p.x, 0, p.z); g.rotation.y = -p.h;
       }
-      roadGeo.attributes.position.needsUpdate = true;
-      // the car points its nose into the turn (more as the turn arrives); right turn = negative yaw
-      const arriving = bend.dir * bend.amount * Math.max(0, 1 - bend.at / 15);
-      const yawTarget = -Math.max(-0.35, Math.min(0.35, bend.k * 6)) - arriving * 0.35;
-      bend.yaw += (yawTarget - bend.yaw) * kb;
+      // the car sits on the road, its nose following the road just ahead (right turn = negative yaw)
+      bend.yaw += (-pathAt(4).h - bend.yaw) * kb;
 
       // car: shrinks and moves ahead while navigating; doors, lights, wheels
       const kk = first ? 1 : Math.min(1, dt * 3);
