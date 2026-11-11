@@ -69,7 +69,8 @@ polls about ten types (98, 38, 35, 0, 232, 19, 20, 24, 72, 97 with this box) eve
 any app. With the Hiworld box configured as Renault → Dacia → "public" on a 2014 Dacia Logan MCV II, a full test (all 64
 message numbers `com.tw.service` handles, every door and the tailgate opened in turn, the headlights as a control)
 showed **no message at all for the doors**, while the lights appeared as `0x0204`. So this CAN-box profile does not
-report door status for that car. Also tested: the Hiworld "21 Sandero" profile (mid spec), and the Dacia profile
+report door status for that car. Also tested: the Hiworld "21 Sandero" profile (mid spec), the "Clio 4" profile
+(same Renault electronics generation; engine off and engine running), and the Dacia profile
 with the **engine running** and the dashboard's door-open warning lit, and central locking/unlocking: still no change in
 any message. Conclusion: on this
 car the CAN box does not receive door status at all (it sits on the multimedia part of the network). Next idea: read
