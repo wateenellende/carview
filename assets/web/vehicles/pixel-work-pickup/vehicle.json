@@ -1,0 +1,26 @@
+{
+  "type": "vehicle",
+  "id": "pixel-work-pickup",
+  "name": "Work Pickup (Retro)",
+  "make": "CarView",
+  "model": "Work",
+  "body": "pickup",
+  "years": "Concept",
+  "tags": [
+    "retro",
+    "pixel",
+    "truck",
+    "utility",
+    "bed",
+    "two-door"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "pixel-16bit",
+  "entry": "../pixel-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "pickup"
+  },
+  "defaultColour": "#c68b48"
+}
