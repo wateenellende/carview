@@ -197,6 +197,13 @@ export function buildCar(opts = {}) {
   const panel = new THREE.Mesh(panelG, M.paint);
   panel.rotation.y = -Math.PI / 2; panel.position.x = -0.008;
   tg.add(panel, plate, handle);
+  // Rear-window wiper, high-mounted stop lamp and a raised chrome badge: visible in the driving view.
+  const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.48), M.plastic);
+  wiper.position.set(-0.024, 1.16, -0.08); wiper.rotation.x = 0.10; tg.add(wiper);
+  const thirdLamp = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.045, 0.34), M.tail);
+  thirdLamp.position.set(-0.023, 1.435, 0); tg.add(thirdLamp);
+  const badge = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.032, 0.22), M.chrome);
+  badge.position.set(-0.031, 0.85, 0); tg.add(badge);
   tg.position.sub(hingeT);
   tgPivot.add(tg);
   car.add(tgPivot);
@@ -212,6 +219,26 @@ export function buildCar(opts = {}) {
   grille.position.set(L + 0.004, 0.68, 0); grille.rotation.y = Math.PI / 2; car.add(grille);
   const grilleBar = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.025, 0.74), M.chrome);
   grilleBar.position.set(L + 0.008, 0.72, 0); car.add(grilleBar);
+  // Fog lights, rear reflectors and exhaust complete the front/rear bumper geometry.
+  for (const side of [-1, 1]) {
+    const fog = new THREE.Mesh(new THREE.BoxGeometry(0.017, 0.075, 0.13), M.head);
+    fog.position.set(L + 0.012, 0.42, side * 0.58); car.add(fog);
+    const reflector = new THREE.Mesh(new THREE.BoxGeometry(0.017, 0.06, 0.17), M.tail);
+    reflector.position.set(-0.014, 0.37, side * 0.61); car.add(reflector);
+  }
+  const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.12, 12), M.chrome);
+  exhaust.rotation.z = Math.PI / 2; exhaust.position.set(-0.075, 0.29, 0.53); car.add(exhaust);
+  if (o.cladding) {
+    // Stepway-style raised sill protection and satin skid plates distinguish the crossover.
+    for (const side of [-1, 1]) {
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.14, 0.05), M.plastic);
+      sill.position.set(2.25, 0.31, side * (WIDTH / 2 + 0.015)); car.add(sill);
+    }
+    for (const xx of [0.003, L + 0.003]) {
+      const skid = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.17, 0.85), M.chrome);
+      skid.position.set(xx, 0.39, 0); car.add(skid);
+    }
+  }
 
   // wheels and arches
   const wheels = [];
@@ -243,9 +270,8 @@ export function buildCar(opts = {}) {
     const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.08), M.plastic); stalk.position.set(3.25, 1.05, side * (halfW(3.22) - 0.02)); car.add(stalk);
   }
 
-  // rear roof spoiler over the tailgate glass
-  // roof rails
-  for (const s of [0.24, 0.76]) {
+  // Roof rails are optional for themes that reuse the builder, and thicker on the crossover.
+  if (o.roofRails !== false) for (const s of [0.24, 0.76]) {
     const pts = [];
     for (let i = 0; i <= 12; i++) { const x = 0.35 + (2.25 * i) / 12; pts.push(glassSurf(x, s).add(new THREE.Vector3(0, 0.06, 0))); }
     car.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.017, 8), M.plastic));
@@ -253,6 +279,10 @@ export function buildCar(opts = {}) {
       const f = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.04), M.plastic);
       f.position.copy(glassSurf(x, s)).add(new THREE.Vector3(0, 0.035, 0)); car.add(f);
     }
+  }
+  if (o.cladding) for (const x of [0.8, 2.3]) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.035, 0.95), M.plastic);
+    bar.position.copy(glassSurf(x, 0.5)).add(new THREE.Vector3(0, 0.11, 0)); car.add(bar);
   }
 
   // doors: skins that sit on the body and hinge at their front edge
