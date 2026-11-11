@@ -183,18 +183,22 @@ export default {
 
 ### Road bends (recommended)
 
-Bends are an impression, not a map. The built-in themes bend the road like this (metres, + = right):
+Bends are an impression, not a map. Speed, GPS turn rate and navigation are all just inputs. The built-in themes:
 
-```js
-// curvature now: steering angle if available, else GPS turn rate / speed
-const k = steer != null ? Math.tan(steer * Math.PI / 180) / 2.6 : (turnRate * Math.PI / 180) / (speed / 3.6);
-// sideways shift of the road s metres ahead of the car; the navigation bend starts at nav.distance
-x(s) = k * s * s / 2 + (s > nav.distance ? nav.dir * nav.amount * 0.045 * (s - nav.distance) ** 2 : 0)
-```
+1. **Build the road as one path**, so it always connects: walk outward from the car in 2 m steps and add up the
+   heading (`heading += curvature(s) * 2`), both forward and backward (the road you came from).
+2. **Curvature under the car = how the car is really turning:** `steer` if present, else
+   `turnRate (rad/s) / speed (m/s)`. Behind the car it stays the same; ahead it fades out over ~40 m (GPS can't
+   see the road ahead). So the car is always on the road.
+3. **Navigation turn far away** (more than ~2.5 s of driving, 15-40 m): an extra bend in the main road starting at
+   `nav.distance` (radius ~12 m, angle `nav.amount * 90°`, side `nav.dir`). Fade it in from ~200 m.
+4. **Navigation turn close by:** if the car is turning the same way (sign of the GPS curvature = `nav.dir`), drop
+   the navigation bend: GPS alone shows the turn (merged). Otherwise draw it as a **side road** forking off at
+   `nav.distance`, while the main road keeps following the GPS (split).
+5. Ease every value (GPS is jittery) and let street lights, kerbs etc. follow the path.
 
-Fade the navigation bend in from ~180 m, ease all values (GPS is jittery), and turn the car's nose into the
-bend as `nav.distance` approaches 0. Test with `?scene=turnleft&dist=60`, `?scene=turnright` or
-`?scene=corner&rate=25` (see section 6).
+Test with `?scene=turnleft&dist=60` (bend ahead), `?scene=turnright&dist=8` (split: not turning),
+`?scene=turnright&dist=8&rate=18` (merged: turning right) or `?scene=corner&rate=25` (GPS only), see section 6.
 
 The same fields may grow over time; ignore keys you don't know.
 
