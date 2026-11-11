@@ -1,6 +1,6 @@
 # CarView to-do
 
-## Many very different car models (parked 2026-11-10)
+## Vehicle catalogue and configurable models (implemented 2026-11-11)
 
 Goal: people pick (and search for) their own kind of car, with the colour picker as it is now.
 
