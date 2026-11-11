@@ -141,11 +141,98 @@ $('tapLayer').addEventListener('click', (e) => {
   if (r && e.clientX >= r.x - pad && e.clientX <= r.x + r.w + pad && e.clientY >= r.y - pad && e.clientY <= r.y + r.h + pad) nextVehicle();
 });
 
+// ------------------------------------------------------------------ turns (road bends in the scene)
+// Upcoming turn: distance from Google Maps' text ("300 m", "1,2 km") and direction read from its arrow picture
+// (Maps rarely says "left"/"right" in words). Real turning: rate of change of the GPS heading.
+// A steering-wheel angle from the CAN box would take priority (state.steer), but most cars don't provide one.
+const turn = { distance: null, at: 0, dir: 0, amount: 0, iconKey: null, rate: 0, lastBearing: null, lastAt: 0 };
+
+function parseDistance(s) {
+  const m = String(s || '').match(/(\d+(?:[.,]\d+)?)\s*(km|m|mi|ft|yd)\b/i);
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(',', '.'));
+  return n * ({ km: 1000, m: 1, mi: 1609.34, ft: 0.3048, yd: 0.9144 })[m[2].toLowerCase()];
+}
+
+function wordsDirection(text) {
+  const t = String(text || '').toLowerCase();
+  const dir = /\b(left|links|linksaf)\b/.test(t) ? -1 : /\b(right|rechts|rechtsaf)\b/.test(t) ? 1 : 0;
+  if (!dir) return null;
+  return { dir, amount: /\b(slight|keep|flauwe|aanhouden|houd)\b/.test(t) ? 0.35 : /\bsharp|scherp/.test(t) ? 1 : 0.7 };
+}
+
+/** Which way does Maps' arrow point? Looks where the arrow head (top part of the picture) sits. */
+function classifyArrow(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const N = 24, c = document.createElement('canvas'); c.width = c.height = N;
+        const g = c.getContext('2d'); g.drawImage(img, 0, 0, N, N);
+        const px = g.getImageData(0, 0, N, N).data;
+        const at = (x, y) => (y * N + x) * 4;
+        const lum = (i) => px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11;
+        const opaque = px[at(0, 0) + 3] > 200;               // arrow on a solid background: compare with the corner
+        const bg = lum(at(0, 0));
+        const w = (x, y) => { const i = at(x, y); return opaque ? Math.abs(lum(i) - bg) / 255 : px[i + 3] / 255; };
+        const centroid = (y0, y1) => {
+          let s = 0, sx = 0, minX = N, maxX = -1;
+          for (let y = y0; y < y1; y++) for (let x = 0; x < N; x++) { const v = w(x, y); if (v > 0.3) { s += v; sx += v * x; minX = Math.min(minX, x); maxX = Math.max(maxX, x); } }
+          return s ? { cx: sx / s / (N - 1), spread: (maxX - minX) / (N - 1) } : null;
+        };
+        const top = centroid(0, Math.round(N * 0.42)), bottom = centroid(Math.round(N * 0.58), N);
+        if (!top) return resolve(null);
+        const dx = top.cx - 0.5;
+        if (top.spread > 0.55 && Math.abs(dx) < 0.1 && bottom) {   // a U shape: U-turn, head on the heavier side
+          return resolve({ dir: bottom.cx < 0.5 ? -1 : 1, amount: 1, uturn: true });
+        }
+        if (Math.abs(dx) < 0.07) return resolve({ dir: 0, amount: 0 });
+        resolve({ dir: Math.sign(dx), amount: Math.max(0.3, Math.min(1, (Math.abs(dx) - 0.04) * 4)) });
+      } catch (e) { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function updateNavTurn(n) {
+  if (!n) { turn.distance = null; turn.dir = 0; turn.amount = 0; turn.iconKey = null; return; }
+  const d = parseDistance(n.title) ?? parseDistance(n.text);
+  if (d != null) { turn.distance = d; turn.at = performance.now(); }
+  const words = wordsDirection(n.title + ' ' + n.text);
+  if (words) { turn.dir = words.dir; turn.amount = words.amount; return; }
+  if (n.icon && n.icon !== turn.iconKey) {
+    turn.iconKey = n.icon;
+    classifyArrow(n.icon).then((r) => { if (r && turn.iconKey === n.icon) { turn.dir = r.dir; turn.amount = r.amount; } });
+  }
+}
+
+function updateTurnRate(bearing) {
+  const now = performance.now();
+  if (bearing == null || car.speed < 8) { turn.rate *= 0.5; turn.lastBearing = null; return; }
+  if (turn.lastBearing != null && now > turn.lastAt) {
+    const delta = ((bearing - turn.lastBearing + 540) % 360) - 180;          // degrees, + = turning right
+    const rate = Math.max(-45, Math.min(45, delta / ((now - turn.lastAt) / 1000)));
+    turn.rate = turn.rate * 0.55 + rate * 0.45;                              // smooth out GPS jitter
+  }
+  turn.lastBearing = bearing; turn.lastAt = now;
+}
+
+/** Navigation info for themes, with the distance counted down from the speed between Maps updates. */
+function navState() {
+  if (!car.nav) return null;
+  let distance = turn.distance;
+  if (distance != null) distance = Math.max(0, distance - (car.speed / 3.6) * (performance.now() - turn.at) / 1000);
+  if (window.DEMO_DIST != null) distance = window.DEMO_DIST;          // desktop preview only
+  return { distance, dir: turn.dir, amount: turn.amount, street: car.nav.text || '' };
+}
+
 function sceneState() {
   const t = currentTheme();
   return {
-    speed: car.speed, lights: car.lights, doors: car.doors, nav: !!car.nav, sky: skyMode(), openView: openView(),
+    speed: car.speed, lights: car.lights, doors: car.doors, nav: navState(), sky: skyMode(), openView: openView(),
     wx: weather(), colour: vehicleColour(t && currentVehicle(t)), bearing: car.bearing,
+    turnRate: window.DEMO_RATE != null ? window.DEMO_RATE : turn.rate, steer: null,
   };
 }
 
@@ -278,6 +365,7 @@ window.onCar = function (type, d) {
     case 'loc':
       if (d && d.speed != null) { car.speed = d.speed < 2 ? 0 : d.speed; car.speedKnown = true; }
       if (d && d.bearing != null && car.speed > 5) car.bearing = d.bearing;
+      updateTurnRate(d && d.bearing != null ? d.bearing : null);
       break;
     case 'gps': car.used = d.used; car.visible = d.visible; break;
     case 'temp': car.temp = d; break;
@@ -285,7 +373,7 @@ window.onCar = function (type, d) {
     case 'door': car.doors.frontLeft = !!d; break;                     // driver door only
     case 'doors': Object.keys(car.doors).forEach((k) => { if (d && k in d) car.doors[k] = !!d[k]; }); break;
     case 'media': car.media = d || {}; car.mediaAt = performance.now(); renderMedia(); break;
-    case 'nav': car.nav = d; renderNav(); break;
+    case 'nav': car.nav = d; updateNavTurn(d); renderNav(); break;
     case 'access':
       car.access = d || {};
       if (d && d.location === false) toast('Location permission is off');
@@ -618,6 +706,12 @@ if (Native) {
   onCar('access', { location: true, media: true });
   onCar('media', { app: 'com.spotify.music', title: 'Night Drive', artist: 'Demo Artist', playing: true, position: 61000, duration: 168000, speed: 1, updated: 0, now: 0 });
   if (scene === 'nav') onCar('nav', { title: '300 m', text: 'Stationsweg', sub: 'Arrive 10:52 · 14 km' });
+  // road bends: ?scene=turnleft|turnright (navigation, &dist=60 freezes the distance) or ?scene=corner (GPS turn)
+  if (scene === 'turnleft' || scene === 'turnright') {
+    onCar('nav', { title: (q.get('dist') || '160') + ' m', text: 'Turn ' + (scene === 'turnleft' ? 'left' : 'right') + ' onto Stationsweg', sub: 'Arrive 10:52 · 14 km' });
+    if (q.get('dist')) window.DEMO_DIST = parseFloat(q.get('dist'));
+  }
+  if (scene === 'corner') { turn.rate = parseFloat(q.get('rate') || '20'); window.DEMO_RATE = turn.rate; }
   if (scene !== 'night' && scene !== 'day') cfg.sky = 'dusk';
   if (scene === 'day') { cfg.sky = 'auto'; car.temp = { c: 14, day: true }; Date.prototype.getHours = () => 12; }
   if (q.get('sheet') === 'settings') openSettings();
