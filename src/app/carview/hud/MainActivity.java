@@ -64,6 +64,22 @@ public class MainActivity extends Activity {
 
     static volatile MainActivity current;
 
+    // Android injects the "Car" bridge into EVERY frame of the page, including the sandboxed theme frame. So each
+    // call must carry this secret, which only the main dashboard page receives (inserted by asset(), main frame
+    // only). Theme or package code in a frame can see the bridge but cannot use it.
+    private final String bridgeToken = newToken();
+
+    private static String newToken() {
+        byte[] b = new byte[24];
+        new java.security.SecureRandom().nextBytes(b);
+        return android.util.Base64.encodeToString(b, android.util.Base64.NO_WRAP | android.util.Base64.URL_SAFE | android.util.Base64.NO_PADDING);
+    }
+
+    boolean ok(String token) {
+        return token != null && java.security.MessageDigest.isEqual(
+                token.getBytes(java.nio.charset.StandardCharsets.UTF_8), bridgeToken.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     private WebView web;
     private boolean pageReady;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -96,7 +112,7 @@ public class MainActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
-                if (HOST.equals(u.getHost())) return asset(u.getPath());
+                if (HOST.equals(u.getHost())) return asset(u.getPath(), r.isForMainFrame());
                 // Block everything else: the dashboard never talks to the internet itself.
                 return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", null, null);
             }
@@ -191,7 +207,7 @@ public class MainActivity extends Activity {
         return super.onKeyDown(code, e);
     }
 
-    private WebResourceResponse asset(String path) {
+    private WebResourceResponse asset(String path, boolean mainFrame) {
         if (path == null || path.equals("/")) path = "/index.html";
         String p = path.substring(1);
         // The scene frame is sandboxed (opaque origin), so its module scripts need a CORS header to load.
@@ -205,6 +221,16 @@ public class MainActivity extends Activity {
                 in = new java.io.FileInputStream(f);
             } else {
                 in = getAssets().open("web/" + p);
+            }
+            if (mainFrame && p.equals("index.html")) {           // only the top-level dashboard page gets the bridge key
+                java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) b.write(buf, 0, n);
+                in.close();
+                String html = b.toString("UTF-8").replace("<meta name=\"carview-token\" content=\"\">",
+                        "<meta name=\"carview-token\" content=\"" + bridgeToken + "\">");
+                in = new java.io.ByteArrayInputStream(html.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
             return new WebResourceResponse(mime(p), "utf-8", 200, "OK", headers, in);
         } catch (IOException e) {
@@ -642,27 +668,27 @@ public class MainActivity extends Activity {
 
     /** Methods the page can call as window.Car.xxx(). */
     private class Bridge {
-        @JavascriptInterface public void ready() { h.post(() -> { pageReady = true; pushAll(); }); }
-        @JavascriptInterface public void playPause() { h.post(MediaListener::playPause); }
-        @JavascriptInterface public void next() { h.post(MediaListener::next); }
-        @JavascriptInterface public void prev() { h.post(MediaListener::prev); }
-        @JavascriptInterface public void spotify() { h.post(() -> open(MediaListener.SPOTIFY)); }
-        @JavascriptInterface public void spotifySearch() {
+        @JavascriptInterface public void ready(String token) { if (!ok(token)) return; h.post(() -> { pageReady = true; pushAll(); }); }
+        @JavascriptInterface public void playPause(String token) { if (!ok(token)) return; h.post(MediaListener::playPause); }
+        @JavascriptInterface public void next(String token) { if (!ok(token)) return; h.post(MediaListener::next); }
+        @JavascriptInterface public void prev(String token) { if (!ok(token)) return; h.post(MediaListener::prev); }
+        @JavascriptInterface public void spotify(String token) { if (!ok(token)) return; h.post(() -> open(MediaListener.SPOTIFY)); }
+        @JavascriptInterface public void spotifySearch(String token) { if (!ok(token)) return;
             h.post(() -> {
                 Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search"));
                 i.setPackage(MediaListener.SPOTIFY);
                 if (i.resolveActivity(getPackageManager()) != null) start(i); else open(MediaListener.SPOTIFY);
             });
         }
-        @JavascriptInterface public void navigate(String dest) {
+        @JavascriptInterface public void navigate(String token, String dest) { if (!ok(token)) return;
             h.post(() -> {
                 Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + Uri.encode(dest)));
                 i.setPackage(MediaListener.MAPS);
                 start(i);
             });
         }
-        @JavascriptInterface public void maps() { h.post(() -> open(MediaListener.MAPS)); }
-        @JavascriptInterface public void mapsSplit() {
+        @JavascriptInterface public void maps(String token) { if (!ok(token)) return; h.post(() -> open(MediaListener.MAPS)); }
+        @JavascriptInterface public void mapsSplit(String token) { if (!ok(token)) return;
             h.post(() -> {
                 Intent i = getPackageManager().getLaunchIntentForPackage(MediaListener.MAPS);
                 if (i == null) return;
@@ -670,9 +696,9 @@ public class MainActivity extends Activity {
                 start(i);
             });
         }
-        @JavascriptInterface public void assistant() { h.post(MainActivity.this::assistant); }
+        @JavascriptInterface public void assistant(String token) { if (!ok(token)) return; h.post(MainActivity.this::assistant); }
         /** Google Maps' own Home/Work shortcut (uses the places saved in Maps). Works because CarView is the home screen. */
-        @JavascriptInterface public void mapsPlace(String which) {
+        @JavascriptInterface public void mapsPlace(String token, String which) { if (!ok(token)) return;
             h.post(() -> {
                 String id = "work".equals(which) ? "manifest_work" : "manifest_home";
                 try {
@@ -688,14 +714,14 @@ public class MainActivity extends Activity {
                 start(i);
             });
         }
-        @JavascriptInterface public void playSearch(String q) { h.post(() -> playFromSearch(q)); }
-        @JavascriptInterface public String packages() { return Packages.list(MainActivity.this); }
-        @JavascriptInterface public void importPackage() { h.post(MainActivity.this::pickPackage); }
-        @JavascriptInterface public void removePackage(String kind, String id) {
+        @JavascriptInterface public void playSearch(String token, String q) { if (!ok(token)) return; h.post(() -> playFromSearch(q)); }
+        @JavascriptInterface public String packages(String token) { if (!ok(token)) return null; return Packages.list(MainActivity.this); }
+        @JavascriptInterface public void importPackage(String token) { if (!ok(token)) return; h.post(MainActivity.this::pickPackage); }
+        @JavascriptInterface public void removePackage(String token, String kind, String id) { if (!ok(token)) return;
             boolean ok = Packages.remove(MainActivity.this, kind, id);
             send("toast", JSONObject.quote(ok ? "Removed" : "Could not remove that package"));
         }
-        @JavascriptInterface public void stopNav() {
+        @JavascriptInterface public void stopNav(String token) { if (!ok(token)) return;
             h.post(() -> {
                 if (!MediaListener.stopNavigation()) {           // no exit button found: at least clear the card here
                     MediaListener.lastNav = "null";
@@ -704,21 +730,21 @@ public class MainActivity extends Activity {
                 }
             });
         }
-        @JavascriptInterface public void phone() { h.post(() -> open("com.tw.bt")); }
-        @JavascriptInterface public String contacts() { return MainActivity.this.contacts(); }
-        @JavascriptInterface public void refreshContacts() { h.post(MainActivity.this::requestContacts); }
-        @JavascriptInterface public void dial(String number) { h.post(() -> MainActivity.this.dial(number)); }
-        @JavascriptInterface public void answer() { h.post(() -> callAction(true)); }
-        @JavascriptInterface public void hangUp() { h.post(() -> callAction(false)); }
-        @JavascriptInterface public String spotifyStatus() { return MainActivity.this.spotify().status().toString(); }
-        @JavascriptInterface public void spotifySetClient(String id) { MainActivity.this.spotify().setClientId(id); }
-        @JavascriptInterface public void spotifyConnect() { h.post(MainActivity.this::spotifyLogin); }
-        @JavascriptInterface public void spotifyDisconnect() { MainActivity.this.spotify().disconnect(); }
-        @JavascriptInterface public void webSearch(String q) { h.post(() -> MainActivity.this.webSearch(q)); }
-        @JavascriptInterface public void pause() { h.post(MediaListener::pause); }
-        @JavascriptInterface public void play() { h.post(MediaListener::play); }
-        @JavascriptInterface public String apps() { return MainActivity.this.apps(); }
-        @JavascriptInterface public void launch(String pkg, String cls) {
+        @JavascriptInterface public void phone(String token) { if (!ok(token)) return; h.post(() -> open("com.tw.bt")); }
+        @JavascriptInterface public String contacts(String token) { if (!ok(token)) return null; return MainActivity.this.contacts(); }
+        @JavascriptInterface public void refreshContacts(String token) { if (!ok(token)) return; h.post(MainActivity.this::requestContacts); }
+        @JavascriptInterface public void dial(String token, String number) { if (!ok(token)) return; h.post(() -> MainActivity.this.dial(number)); }
+        @JavascriptInterface public void answer(String token) { if (!ok(token)) return; h.post(() -> callAction(true)); }
+        @JavascriptInterface public void hangUp(String token) { if (!ok(token)) return; h.post(() -> callAction(false)); }
+        @JavascriptInterface public String spotifyStatus(String token) { if (!ok(token)) return null; return MainActivity.this.spotify().status().toString(); }
+        @JavascriptInterface public void spotifySetClient(String token, String id) { if (!ok(token)) return; MainActivity.this.spotify().setClientId(id); }
+        @JavascriptInterface public void spotifyConnect(String token) { if (!ok(token)) return; h.post(MainActivity.this::spotifyLogin); }
+        @JavascriptInterface public void spotifyDisconnect(String token) { if (!ok(token)) return; MainActivity.this.spotify().disconnect(); }
+        @JavascriptInterface public void webSearch(String token, String q) { if (!ok(token)) return; h.post(() -> MainActivity.this.webSearch(q)); }
+        @JavascriptInterface public void pause(String token) { if (!ok(token)) return; h.post(MediaListener::pause); }
+        @JavascriptInterface public void play(String token) { if (!ok(token)) return; h.post(MediaListener::play); }
+        @JavascriptInterface public String apps(String token) { if (!ok(token)) return null; return MainActivity.this.apps(); }
+        @JavascriptInterface public void launch(String token, String pkg, String cls) { if (!ok(token)) return;
             h.post(() -> {
                 Intent i = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
                 i.setComponent(new ComponentName(pkg, cls));
@@ -726,10 +752,10 @@ public class MainActivity extends Activity {
                 start(i);
             });
         }
-        @JavascriptInterface public void settings() { h.post(() -> start(new Intent(Settings.ACTION_SETTINGS))); }
-        @JavascriptInterface public void mediaAccess() {
+        @JavascriptInterface public void settings(String token) { if (!ok(token)) return; h.post(() -> start(new Intent(Settings.ACTION_SETTINGS))); }
+        @JavascriptInterface public void mediaAccess(String token) { if (!ok(token)) return;
             h.post(() -> start(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
         }
-        @JavascriptInterface public boolean hasMedia() { return MediaListener.hasSession(); }
+        @JavascriptInterface public boolean hasMedia(String token) { if (!ok(token)) return false; return MediaListener.hasSession(); }
     }
 }

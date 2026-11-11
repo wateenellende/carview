@@ -5,9 +5,16 @@
 
 const $ = (id) => document.getElementById(id);
 const Native = window.Car || null;
+// Every bridge call carries the key the Android app put in this page (themes in frames never get it).
+const BRIDGE_TOKEN = (() => {
+  const m = document.querySelector('meta[name="carview-token"]');
+  const token = m ? m.content : '';
+  if (m) m.remove();
+  return token;
+})();
 function call(fn, ...args) {
   const N = window.Car;
-  try { if (N && typeof N[fn] === 'function') return N[fn](...args); } catch (e) { console.log(e); }
+  try { if (N && typeof N[fn] === 'function') return N[fn](BRIDGE_TOKEN, ...args); } catch (e) { console.log(e); }
   return undefined;
 }
 
@@ -718,6 +725,6 @@ if (Native) {
   if (scene === 'day') { cfg.sky = 'auto'; car.temp = { c: 14, day: true }; Date.prototype.getHours = () => 12; }
   if (q.get('sheet') === 'settings') openSettings();
   console.log('VIEWPORT ' + innerWidth + 'x' + innerHeight);
-  window.Car = { contacts: () => JSON.stringify([{ name: 'Alex Janssen', number: '+31 6 1111 1111' }, { name: 'Alex Janssen', number: '+31 30 222 2222' }, { name: 'Mama', number: '+31 6 3333 3333' }, { name: 'Sam de Vries', number: '+31 6 4444 4444' }, { name: 'Sam Bakker', number: '+31 6 5555 5555' }, { name: 'Pizzeria Roma', number: '+31 30 666 6666' }]), dial: (x) => console.log('CALL dial ' + x), refreshContacts: () => console.log('CALL refreshContacts'), navigate: (x) => console.log('CALL navigate ' + x), mapsPlace: (x) => console.log('CALL mapsPlace ' + x), playSearch: (x) => console.log('CALL playSearch ' + x), webSearch: (x) => console.log('CALL webSearch ' + x), next: () => console.log('CALL next'), prev: () => console.log('CALL prev'), pause: () => console.log('CALL pause'), play: () => console.log('CALL play'), assistant: () => console.log('CALL assistant') };
+  window.Car = { contacts: (k) => JSON.stringify([{ name: 'Alex Janssen', number: '+31 6 1111 1111' }, { name: 'Alex Janssen', number: '+31 30 222 2222' }, { name: 'Mama', number: '+31 6 3333 3333' }, { name: 'Sam de Vries', number: '+31 6 4444 4444' }, { name: 'Sam Bakker', number: '+31 6 5555 5555' }, { name: 'Pizzeria Roma', number: '+31 30 666 6666' }]), dial: (k, x) => console.log('CALL dial ' + x), refreshContacts: (k) => console.log('CALL refreshContacts'), navigate: (k, x) => console.log('CALL navigate ' + x), mapsPlace: (k, x) => console.log('CALL mapsPlace ' + x), playSearch: (k, x) => console.log('CALL playSearch ' + x), webSearch: (k, x) => console.log('CALL webSearch ' + x), next: (k) => console.log('CALL next'), prev: (k) => console.log('CALL prev'), pause: (k) => console.log('CALL pause'), play: (k) => console.log('CALL play'), assistant: (k) => console.log('CALL assistant') };
   q.getAll('say').forEach((s) => { if (s.startsWith('nav:')) { voiceMode = 'nav'; s = s.slice(4); } voiceCommand(s); });
 }
