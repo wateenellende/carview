@@ -15,7 +15,16 @@ The shapes below blend cues from familiar, popular production models. These are 
 
 ## Implementation
 
-`assets/web/vehicles/model-builder/vehicle.js` blends a common dimensional framework with **six separate body-style recipes**. Per-model `vehicle.json` records define real-world dimensions in metres: length, width, height, rear overhang, wheelbase, ground clearance, wheel radius, cabin start/end and roof positions. The style recipe changes taper, wheel haunches, rocker inset, roof crown, rear shoulder and lamp signature.
+**Each Modern class has its own authored exterior profile module** in
+`assets/web/vehicles/modern/`:
+`sports-coupe.js`, `city-hatch.js`, `family-saloon.js`,
+`trail-suv.js`, `work-pickup.js` and `cargo-van.js`.
+These files are not aliases for a single shape: each defines different body
+stations, roof-line stations, rear glass depth, lamp signature and three-dimensional
+exterior details. `modern/common.js` provides only the shared smooth surface
+meshing, materials, wheels and door/lighting animation. The previous
+`model-builder/vehicle.js` remains available to older/external built-in variants,
+but the six catalogue cars no longer route through it. Per-model `vehicle.json` records define real-world dimensions in metres: length, width, height, rear overhang, wheelbase, ground clearance, wheel radius, cabin start/end and roof positions. The style recipe changes taper, wheel haunches, rocker inset, roof crown, rear shoulder and lamp signature.
 
 Silhouette comes first. Front/rear fascias, wheel position, wheel-arch trim, side glass and rear detailing must remain credible in a **rear three-quarter camera**, because that is how the dashboard and Settings thumbnails usually display vehicles. Use restrained physical-material paint; avoid oversized glowing tail lamps and giant rounded surfaces.
 
