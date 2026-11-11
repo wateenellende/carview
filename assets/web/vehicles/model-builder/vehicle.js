@@ -247,9 +247,9 @@ export function build({ THREE, colour = '#1f3a6e', options = {} }) {
   for (const axle of [rearAxle, frontAxle]) for (const side of [-1, 1]) {
     const g = new THREE.Group();
     const skin = halfWidth(axle);
-    // Wheels must sit outside the sculpted wing: the original narrow track
-    // buried most of the tyre behind the continuous body surface.
-    const z = side * (skin + 0.065);
+    // Keep the wheel centre just outside the sculpted wing: too far inside
+    // hides the tyre, but too far outside makes it look detached from the arch.
+    const z = side * (skin + 0.026);
     g.position.set(axle, radius, z);
     const rubber = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.22, 36), tyre);
     rubber.rotation.x = PI / 2; g.add(rubber);
@@ -269,11 +269,11 @@ export function build({ THREE, colour = '#1f3a6e', options = {} }) {
     // Black upper well behind the tyre and a curved body-side arch lip make
     // the wheel opening apparent even when the side panels are painted bright.
     const well = new THREE.Mesh(new THREE.CircleGeometry(radius * 1.13, 36, 0, PI), black);
-    well.position.set(axle, radius, side * (skin + 0.024));
+    well.position.set(axle, radius, side * (skin + 0.012));
     if (side < 0) well.rotation.y = PI;
     root.add(well);
     const arch = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.13, 0.026, 8, 36, PI), black);
-    arch.position.set(axle, radius, side * (skin + 0.042));
+    arch.position.set(axle, radius, side * (skin + 0.027));
     root.add(arch);
   }
 
