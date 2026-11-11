@@ -168,7 +168,9 @@ export default {
 | `lights` | `true` / `false` / `null` | headlights on/off, `null` = not known yet |
 | `doors` | object | `{ frontLeft, rearLeft, frontRight, rearRight, tailgate }` booleans |
 | `openView` | boolean | parked with something open: show the car so the open parts are visible |
-| `nav` | boolean | Google Maps is navigating (make room: the car may shrink/move) |
+| `nav` | object or `null` | Google Maps is navigating (make room: the car may shrink/move). `nav.distance` = metres to the next turn (counted down from the speed between Maps updates, may be `null`), `nav.dir` = -1 left / 0 straight / +1 right, `nav.amount` = 0…1 how sharp, `nav.street` |
+| `turnRate` | degrees/second | how fast the car is turning **now**, from the GPS heading (+ = right; 0 when slow or parked) |
+| `steer` | degrees or `null` | steering-wheel angle if the car/CAN box provides it (+ = right); when present, prefer it over `turnRate` |
 | `sky` | `'day'` / `'dusk'` / `'night'` | time of day (already darker when the lights are on) |
 | `wx.kind` | `null` / `'rain'` / `'snow'` | precipitation to draw |
 | `wx.amount` | 0…1 | how heavy |
@@ -178,6 +180,21 @@ export default {
 | `wx.fog`, `wx.thunder` | boolean | fog; thunderstorm (flash now and then) |
 | `colour` | `"#rrggbb"` | the vehicle colour the user picked |
 | `bearing` | degrees or `null` | driving direction (0 = north) |
+
+### Road bends (recommended)
+
+Bends are an impression, not a map. The built-in themes bend the road like this (metres, + = right):
+
+```js
+// curvature now: steering angle if available, else GPS turn rate / speed
+const k = steer != null ? Math.tan(steer * Math.PI / 180) / 2.6 : (turnRate * Math.PI / 180) / (speed / 3.6);
+// sideways shift of the road s metres ahead of the car; the navigation bend starts at nav.distance
+x(s) = k * s * s / 2 + (s > nav.distance ? nav.dir * nav.amount * 0.045 * (s - nav.distance) ** 2 : 0)
+```
+
+Fade the navigation bend in from ~180 m, ease all values (GPS is jittery), and turn the car's nose into the
+bend as `nav.distance` approaches 0. Test with `?scene=turnleft&dist=60`, `?scene=turnright` or
+`?scene=corner&rate=25` (see section 6).
 
 The same fields may grow over time; ignore keys you don't know.
 
@@ -257,7 +274,8 @@ these to the URL:
 
 * `?theme=<id>&vehicle=<id>`: choose them (a package must be listed in `assets/web/packages.js` to be found this
   way, so for testing, copy your folder into `assets/web/themes/` or `assets/web/vehicles/` and add a line there).
-* `&scene=cruise|nav|night|open|day|rain|snow|wind|call|oncall`: fake car states.
+* `&scene=cruise|nav|night|open|day|rain|snow|wind|call|oncall|turnleft|turnright|corner`: fake car states
+  (`&dist=60` freezes the distance of a navigation turn, `&rate=25` sets the GPS turn rate for `corner`).
 
 Check: day, dusk and night; rain, snow and side wind; driving, navigating, parked with all doors open; lights on.
 Tap the car to make sure your `vehicleRect` is right.
