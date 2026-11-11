@@ -1,0 +1,37 @@
+{
+  "type": "vehicle",
+  "id": "city-hatch",
+  "name": "City Hatchback",
+  "make": "CarView",
+  "model": "City",
+  "body": "hatchback",
+  "years": "Concept",
+  "tags": [
+    "compact",
+    "small",
+    "urban",
+    "city"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "three-pbr",
+  "entry": "../model-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "hatchback",
+    "length": 3.65,
+    "width": 1.67,
+    "height": 1.43,
+    "rearOverhang": 0.58,
+    "wheelbase": 2.4,
+    "wheelRadius": 0.285,
+    "groundClearance": 0.17,
+    "beltHeight": 0.92,
+    "cabinRear": 0.13,
+    "cabinFront": 3.07,
+    "roofFlatStart": 0.45,
+    "roofFlatEnd": 2.56,
+    "doors": 4
+  },
+  "defaultColour": "#37a7b6"
+}
