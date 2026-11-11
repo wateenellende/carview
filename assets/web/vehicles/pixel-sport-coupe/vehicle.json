@@ -1,0 +1,26 @@
+{
+  "type": "vehicle",
+  "id": "pixel-sport-coupe",
+  "name": "Sports Coupe (Retro)",
+  "make": "CarView",
+  "model": "Sport",
+  "body": "coupe",
+  "years": "Concept",
+  "tags": [
+    "retro",
+    "pixel",
+    "sports",
+    "fastback",
+    "two-door",
+    "low"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "pixel-16bit",
+  "entry": "../pixel-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "coupe"
+  },
+  "defaultColour": "#b3262f"
+}
