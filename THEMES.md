@@ -92,6 +92,19 @@ package with the same id as a built-in one overrides the built-in.
 
 `options` (optional) is passed to the vehicle code unchanged, so one vehicle file can make several cars.
 The built-in *Logan Crossover* is just the *Logan MCV* file with different options.
+The high-detail Logan MCV and Crossover continue to use `logan-mcv/vehicle.js`, but
+**their dimensions are now passed through `vehicle.json` options**:
+`length`, `width`, `rearOverhang`, `wheelbase`, `wheelRadius`,
+`roofHeight`, `roofWidth`, `rearRoofX` (rear edge of the roof),
+`windscreenX` (front edge of the greenhouse), `rideHeight`, `archTube`,
+`cladding` and `roofRails`. The high-detail loft and moving panels are
+preserved; body dimensions are scaled from the original Logan reference and the
+roof is re-lofted from the JSON dimensions. Axles follow the independent
+wheelbase/overhang values, rather than being locked to the body-length scale.
+The specialised Logan model is for estate/crossover proportions; use the
+shared general builder for coupe, pickup, van, saloon, SUV and hatchback shapes.
+Run `node tools/check-logan.mjs` to exercise the high-detail geometry.
+
 For the additional six 3D body styles, built-in vehicle manifests reuse
 `../model-builder/vehicle.js` and specify these `options` in **metres**:
 `length`, `width`, `height`, `rearOverhang`, `wheelbase`, `wheelRadius`,
