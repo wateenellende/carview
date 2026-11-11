@@ -67,24 +67,47 @@ function create(canvas) {
     });
   }
 
-  // Road bends, the classic 16-bit way: every row of the road is shifted sideways by the bend at its distance.
-  // bend.k = real turn now (GPS turn rate / speed, or steering angle); the navigation turn starts bend.at metres ahead.
-  const bend = { k: 0, at: 999, dir: 0, amount: 0 };
-  function roadOffset(sAhead) {                  // metres, + = right
-    let x = bend.k * sAhead * sAhead / 2;
-    if (bend.amount > 0.01 && sAhead > bend.at) { const u = sAhead - bend.at; x += bend.dir * bend.amount * 0.045 * u * u; }
-    return Math.max(-400, Math.min(400, x));
-  }
+  // Road bends, the classic 16-bit way: every row of the road is shifted sideways. The main road follows how the
+  // car is really driving (GPS turn rate or steering angle: bent under the car, straightening out ahead), so the
+  // car is always on it. A navigation turn is a side road that forks off at the remaining distance.
+  const bend = { k: 0, at: 999, dir: 0, amount: 0, onMain: 0, split: 0 };   // see the Modern theme for the rules
+  const TURN_R = 12;
+  const STEP = 2, MAXS = 220, MX = new Float32Array(MAXS / STEP + 2), MH = new Float32Array(MAXS / STEP + 2);
+  const BXS = new Float32Array(MAXS / STEP + 2);
   function updateBend(dt, st) {
     const v = (st.speed || 0) / 3.6, kb = Math.min(1, dt * 2);
     const kNow = st.steer != null ? Math.tan(st.steer * Math.PI / 180) / 2.6
       : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
-    bend.k += (Math.max(-0.08, Math.min(0.08, kNow)) - bend.k) * kb;
+    bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * kb;
     const nav = st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
-    const near = nav ? Math.min(1, Math.max(0, (180 - nav.distance) / 60)) : 0;
+    const near = nav ? Math.min(1, Math.max(0, (200 - nav.distance) / 60)) : 0;
     bend.amount += ((nav ? nav.amount * near : 0) - bend.amount) * kb;
-    if (nav) { bend.dir = nav.dir; bend.at = nav.distance; }
+    // the flat pixel road squeezes everything past ~30 m into a few rows: show the fork closer than it really is
+    if (nav) { bend.dir = nav.dir; bend.at = Math.max(0, nav.distance) * 0.4; }
+    // far: the turn bends the main road; close (~2.5 s of driving): merge if turning that way, else split off
+    const mergeDist = Math.max(15, Math.min(40, v * 2.5));
+    const close = !!nav && nav.distance < mergeDist;
+    const agree = close && Math.abs(bend.k) > 0.008 && Math.sign(bend.k) === nav.dir;
+    bend.onMain += ((nav && !close ? 1 : 0) - bend.onMain) * kb;
+    bend.split += ((close && !agree ? 1 : 0) - bend.split) * kb;
+    const arc = bend.amount * Math.PI / 2 * TURN_R;
+    const navK = (sAt) => (bend.dir && sAt >= bend.at && sAt <= bend.at + arc ? bend.onMain * bend.dir / TURN_R : 0);
+    // main road: heading added up every 2 m (one continuous road)
+    MX[0] = 0; MH[0] = 0;
+    for (let i = 1; i < MX.length; i++) {
+      const sAt = (i - 0.5) * STEP, h = MH[i - 1] + (bend.k * Math.max(0, 1 - sAt / 40) + navK(sAt)) * STEP;
+      MX[i] = MX[i - 1] + Math.tan(Math.max(-1.2, Math.min(1.2, (MH[i - 1] + h) / 2))) * STEP; MH[i] = h;
+    }
+    // side road: leaves the main road at bend.at and turns away (max ~70°, a flat screen can't show more)
+    const j0 = Math.min(MX.length - 1, Math.round(bend.at / STEP)), turnTo = bend.dir * Math.min(1.2, bend.amount * bend.split * Math.PI / 2);
+    let h = MH[j0];
+    for (let i = 0; i < MX.length; i++) {
+      if (i <= j0) { BXS[i] = MX[i]; continue; }
+      h += (MH[j0] + turnTo - h) * 0.25;                 // eases into the new direction over ~10 m
+      BXS[i] = BXS[i - 1] + Math.tan(Math.max(-1.2, Math.min(1.2, h))) * STEP;
+    }
   }
+  const sample = (arr, sAt) => { const f = Math.max(0, Math.min(arr.length - 1.001, sAt / STEP)), i = Math.floor(f); return arr[i] + (arr[i + 1] - arr[i]) * (f - i); };
 
   function drawRoad(mode) {
     const grass = GRASS[mode], road = ROAD[mode];
@@ -93,8 +116,14 @@ function create(canvas) {
       const z = 2.2 / p;
       const seg = Math.floor((z + travel) / 4) & 1;
       const half = 10 + p * 170;
-      const cx = W / 2 + Math.max(-600, Math.min(600, roadOffset(z) * half / 4.5));   // 4.5 m = half the road
+      const pxPerM = half / 4.5;                                                       // 4.5 m = half the road
+      const cx = W / 2 + Math.max(-900, Math.min(900, sample(MX, z) * pxPerM));
       rect(0, y, W, 1, grass[seg]);
+      if (bend.split > 0.02 && bend.amount > 0.02 && bend.dir && z > bend.at) {                            // the side road (drawn first)
+        const bx = W / 2 + Math.max(-900, Math.min(900, sample(BXS, z) * pxPerM)), bh = half * 0.9;
+        rect(bx - bh, y, bh * 2, 1, road[seg]);
+        if (seg) rect(bx - 0.5 - p * 2, y, 1 + p * 4, 1, mode === 'night' ? '#cfc8b4' : '#fff8e7');
+      }
       rect(cx - half, y, half * 2, 1, road[seg]);
       const kerb = 1 + p * 14, kc = seg ? '#e8e2d0' : '#d6303b';
       rect(cx - half - kerb, y, kerb, 1, kc);
