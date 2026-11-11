@@ -54,10 +54,36 @@ function create(canvas, api) {
   for (let i = 0; i < 4000; i++) { t.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`; t.fillRect(Math.random() * 256, Math.random() * 512, 1, 1); }
   t.fillStyle = '#d9dde6'; t.fillRect(10, 0, 6, 512); t.fillRect(240, 0, 6, 512); t.fillRect(124, 0, 8, 260);
   const tex = new THREE.CanvasTexture(tc);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1, 30); tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1, 1); tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(9, 300), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }));
-  road.rotation.x = -Math.PI / 2; road.position.z = -120; s.add(road);
+  // The road is a strip of 2 m segments so it can bend: see roadOffset() and the "bends" part of frame().
+  const SEG = 2, ROAD_Z0 = 30, ROAD_N = 150, HALF = 4.5;
+  const roadPos = new Float32Array((ROAD_N + 1) * 6), roadUv = new Float32Array((ROAD_N + 1) * 4);
+  const roadNrm = new Float32Array((ROAD_N + 1) * 6), roadIdx = [];
+  for (let i = 0; i <= ROAD_N; i++) {
+    const z = ROAD_Z0 - i * SEG, v = (ROAD_Z0 - z) / 10;           // texture repeats every 10 m
+    roadPos.set([-HALF, 0, z, HALF, 0, z], i * 6);
+    roadUv.set([0, v, 1, v], i * 4);
+    roadNrm.set([0, 1, 0, 0, 1, 0], i * 6);
+    if (i < ROAD_N) { const a = i * 2; roadIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  const roadGeo = new THREE.BufferGeometry();
+  roadGeo.setAttribute('position', new THREE.BufferAttribute(roadPos, 3));
+  roadGeo.setAttribute('uv', new THREE.BufferAttribute(roadUv, 2));
+  roadGeo.setAttribute('normal', new THREE.BufferAttribute(roadNrm, 3));
+  roadGeo.setIndex(roadIdx);
+  const road = new THREE.Mesh(roadGeo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }));
+  road.frustumCulled = false; s.add(road);
+
+  // Road bends: an impression, not a map. bend.k = curvature of the real turn now (from the GPS turn rate);
+  // an upcoming turn from navigation starts at bend.at metres ahead and slides towards the car as you drive.
+  const bend = { k: 0, at: 999, dir: 0, amount: 0, yaw: 0 };
+  function roadOffset(sAhead) {                  // sideways shift (m, + = right) of the road sAhead metres in front
+    if (sAhead <= 0) return 0;
+    let x = bend.k * sAhead * sAhead / 2;
+    if (bend.amount > 0.01 && sAhead > bend.at) { const u = sAhead - bend.at; x += bend.dir * bend.amount * 0.045 * u * u; }
+    return Math.max(-400, Math.min(400, x));
+  }
   const groundMat = new THREE.MeshStandardMaterial({ roughness: 1 });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat);
   ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; s.add(ground);
@@ -261,7 +287,7 @@ function create(canvas, api) {
       }
       return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     },
-    /** state: see THEMES.md (speed, lights, doors, nav, sky, openView, wx, colour, bearing) */
+    /** state: see THEMES.md (speed, lights, doors, nav {distance, dir, amount}, turnRate, steer, sky, openView, wx, colour, bearing) */
     frame(dt, st) {
       if (st.colour && st.colour !== colourNow) { colourNow = st.colour; if (car) car.setColour(colourNow); }
       const k = first ? 1 : Math.min(1, dt * 1.2);
@@ -273,7 +299,28 @@ function create(canvas, api) {
       for (const g of lamps) {
         g.position.z += v * dt;
         if (g.position.z > 12) g.position.z -= COUNT * SPACING;
+        g.position.x = roadOffset(carZ - g.position.z);   // street lights follow the bend
       }
+
+      // bends: steering angle if a car ever provides one, else the real turn rate from the GPS heading,
+      // plus the next turn from navigation (distance already counted down by the dashboard from the speed)
+      const kb = first ? 1 : Math.min(1, dt * 2);
+      const kNow = st.steer != null ? Math.tan(st.steer * Math.PI / 180) / 2.6
+        : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
+      bend.k += (Math.max(-0.08, Math.min(0.08, kNow)) - bend.k) * kb;
+      const nav = st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
+      const near = nav ? Math.min(1, Math.max(0, (180 - nav.distance) / 60)) : 0;   // fades in from 180 m away
+      bend.amount += ((nav ? nav.amount * near : 0) - bend.amount) * kb;
+      if (nav) { bend.dir = nav.dir; bend.at = nav.distance; }
+      for (let i = 0; i <= ROAD_N; i++) {
+        const off = roadOffset(carZ - (ROAD_Z0 - i * SEG));
+        roadPos[i * 6] = off - HALF; roadPos[i * 6 + 3] = off + HALF;
+      }
+      roadGeo.attributes.position.needsUpdate = true;
+      // the car points its nose into the turn (more as the turn arrives); right turn = negative yaw
+      const arriving = bend.dir * bend.amount * Math.max(0, 1 - bend.at / 15);
+      const yawTarget = -Math.max(-0.35, Math.min(0.35, bend.k * 6)) - arriving * 0.35;
+      bend.yaw += (yawTarget - bend.yaw) * kb;
 
       // car: shrinks and moves ahead while navigating; doors, lights, wheels
       const kk = first ? 1 : Math.min(1, dt * 3);
@@ -281,7 +328,8 @@ function create(canvas, api) {
       carZ += ((st.nav ? -3 : 0) - carZ) * kk;
       const drift = updateWeather(dt, st, v);
       carG.scale.setScalar(scale); carG.position.z = carZ; carG.position.x = LANE_X + drift;
-      rig.position.set(LANE_X, 0, carZ); rig.scale.setScalar(scale);
+      carG.rotation.y = Math.PI / 2 + bend.yaw;
+      rig.position.set(LANE_X, 0, carZ); rig.scale.setScalar(scale); rig.rotation.y = bend.yaw;   // beams turn too
       const on = st.lights === true;
       if (car) {
         for (const n of car.doorNames || []) car.setDoor(n, !!(st.doors && st.doors[n]));
