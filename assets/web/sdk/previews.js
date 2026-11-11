@@ -65,7 +65,14 @@ async function createRenderer() {
   renderer.toneMapping = three.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.18;
   scene = new three.Scene();
-  scene.background = new three.Color(0x26384b);
+  scene.background = new three.Color(0x3b4b5f);
+  // A quiet studio floor makes tyre contact and stance visible. The thumbnails
+  // use the same one GPU context as before; no extra renderers are created.
+  const floor = new three.Mesh(new three.PlaneGeometry(100, 100),
+    new three.MeshStandardMaterial({ color: 0x354359, roughness: 0.91 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.045;
+  scene.add(floor);
   scene.add(new three.HemisphereLight(0xf3f6ff, 0x526071, 2.0));
   const key = new three.DirectionalLight(0xfff4df, 3.2);
   key.position.set(-3, 7, -5); scene.add(key);
@@ -74,6 +81,9 @@ async function createRenderer() {
   camera = new three.PerspectiveCamera(37, WIDTH / HEIGHT, 0.08, 120);
 }
 
+function lenSafe(vehicle, item) {
+  return vehicle.length || item.options?.length || 4.5;
+}
 async function renderModern(item) {
   await createRenderer();
   const mod = await import(item.url);
@@ -83,6 +93,24 @@ async function renderModern(item) {
   if (!vehicle?.group) throw new Error('Vehicle did not build a group');
   const root = vehicle.group;
   scene.add(root);
+  // Soft, lightweight contact shadow instead of heavy dynamic shadow maps.
+  // The main animated scene already owns its own road shadow.
+  const shadowCanvas = document.createElement('canvas');
+  shadowCanvas.width = shadowCanvas.height = 128;
+  const shadowCtx = shadowCanvas.getContext('2d');
+  const gradient = shadowCtx.createRadialGradient(64, 64, 10, 64, 64, 63);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.47)');
+  gradient.addColorStop(0.55, 'rgba(0,0,0,0.28)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  shadowCtx.fillStyle = gradient;
+  shadowCtx.fillRect(0, 0, 128, 128);
+  const shadowTexture = new three.CanvasTexture(shadowCanvas);
+  const contact = new three.Mesh(new three.PlaneGeometry(lenSafe(vehicle, item) * 1.12,
+    (vehicle.width || item.options?.width || 1.9) * 1.48),
+    new three.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false }));
+  contact.rotation.x = -Math.PI / 2;
+  contact.position.set(lenSafe(vehicle, item) * 0.5, 0.008, 0);
+  scene.add(contact);
   try {
     vehicle.setColour?.(item.colour);
     vehicle.setLights?.(true);
@@ -98,7 +126,10 @@ async function renderModern(item) {
     renderer.render(scene, camera);
     return canvas.toDataURL('image/png');
   } finally {
-    scene.remove(root);
+    scene.remove(root, contact);
+    contact.geometry.dispose();
+    contact.material.dispose();
+    shadowTexture.dispose();
     const geometries = new Set(), materials = new Set();
     root.traverse((obj) => {
       if (obj.geometry) geometries.add(obj.geometry);
