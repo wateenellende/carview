@@ -15,3 +15,5 @@ jobs:
         run: node tools/check-vehicles.mjs
       - name: Smoke-test model renderers
         run: node tools/smoke-vehicles.mjs
+      - name: Verify detailed Logan geometry and controls
+        run: node tools/check-logan.mjs
