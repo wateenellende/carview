@@ -64,7 +64,16 @@ for (const item of rows) {
   check(Array.isArray(m.tags) && m.tags.length > 0 && m.tags.every((t) => typeof t === 'string'),
     'Missing searchable tags: ' + key);
   const o = m.options || {};
-  const generic = m.entry === '../model-builder/vehicle.js';
+  const classModules = {
+    hatchback: 'city-hatch', coupe: 'sports-coupe', saloon: 'family-saloon',
+    suv: 'trail-suv', pickup: 'work-pickup', van: 'cargo-van'
+  };
+  const classModule = m.entry.startsWith('../modern/');
+  const generic = m.entry === '../model-builder/vehicle.js' || classModule;
+  if (classModule) {
+    check(m.entry === '../modern/' + classModules[m.options?.bodyStyle] + '.js',
+      'Modern class module does not match its body style: ' + key);
+  }
   if (generic) {
     check(['hatchback', 'coupe', 'saloon', 'suv', 'pickup', 'van'].includes(o.bodyStyle),
       'Unknown bodyStyle: ' + key);
@@ -79,6 +88,14 @@ for (const item of rows) {
     check(o.beltHeight < o.height, 'Belt must be below roof: ' + key);
     check(o.doors === 2 || o.doors === 4, 'doors must be 2 or 4: ' + key);
   }
+}
+
+
+const sharedModern = path.join(vehicleRoot, 'modern', 'common.js');
+check(exists(sharedModern), 'Missing shared Modern body-construction module');
+if (exists(sharedModern)) {
+  try { execFileSync(process.execPath, ['--check', '--input-type=module'], { input: read(sharedModern) }); }
+  catch (e) { failures.push('JavaScript parse error in Modern common.js: ' + String(e.stderr || e.message)); }
 }
 
 const vehicles = rows.filter((x) => x?.manifest?.type === 'vehicle');
