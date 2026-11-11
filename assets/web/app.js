@@ -366,6 +366,13 @@ function openApps() {
   $('apps').hidden = false;
 }
 
+function matchesVehicle(vehicle, query) {
+  const m = vehicle.manifest;
+  const text = [m.id, m.name, m.make, m.model, m.body, m.years, ...(Array.isArray(m.tags) ? m.tags : [])]
+    .filter(Boolean).join(' ').toLocaleLowerCase();
+  return text.includes(query.trim().toLocaleLowerCase());
+}
+
 function chooser(row, items, isOn, pick) {
   const el = $(row); el.innerHTML = '';
   items.forEach((it) => {
@@ -376,6 +383,8 @@ function chooser(row, items, isOn, pick) {
     el.appendChild(b);
   });
 }
+
+$('vehicleSearch').addEventListener('input', openSettings);
 
 function openSettings() {
   loadPackages();
@@ -396,7 +405,10 @@ function openSettings() {
     sw.appendChild(b);
   });
   chooser('themeRow', themes(), (it) => it === t, (it) => { cfg.theme = it.manifest.id; saveCfg(); applyTheme(); openSettings(); });
-  chooser('vehicleRow', vehiclesFor(t), (it) => it === v, (it) => {
+  const vehicleQuery = $('vehicleSearch').value;
+  const choices = vehiclesFor(t).filter((it) => matchesVehicle(it, vehicleQuery));
+  $('vehicleEmpty').hidden = choices.length !== 0;
+  chooser('vehicleRow', choices, (it) => it === v, (it) => {
     cfg.vehicles[t.manifest.id] = it.manifest.id; saveCfg();
     sendScene({ type: 'vehicle', vehicle: vehicleMsg(it) }); openSettings();
   });
