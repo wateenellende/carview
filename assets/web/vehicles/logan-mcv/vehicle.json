@@ -7,5 +7,22 @@
   "license": "GPL-3.0-or-later",
   "family": "three-pbr",
   "entry": "vehicle.js",
-  "defaultColour": "#1f3a6e"
+  "defaultColour": "#1f3a6e",
+  "make": "Dacia",
+  "model": "Logan MCV II",
+  "body": "estate",
+  "years": "2013–2020",
+  "tags": [
+    "estate",
+    "wagon",
+    "family",
+    "logaan",
+    "dacia",
+    "mcv"
+  ],
+  "options": {
+    "wheelRadius": 0.31,
+    "rideHeight": 0,
+    "archTube": 0.035
+  }
 }
