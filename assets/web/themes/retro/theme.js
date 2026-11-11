@@ -67,13 +67,33 @@ function create(canvas) {
     });
   }
 
+  // Road bends, the classic 16-bit way: every row of the road is shifted sideways by the bend at its distance.
+  // bend.k = real turn now (GPS turn rate / speed, or steering angle); the navigation turn starts bend.at metres ahead.
+  const bend = { k: 0, at: 999, dir: 0, amount: 0 };
+  function roadOffset(sAhead) {                  // metres, + = right
+    let x = bend.k * sAhead * sAhead / 2;
+    if (bend.amount > 0.01 && sAhead > bend.at) { const u = sAhead - bend.at; x += bend.dir * bend.amount * 0.045 * u * u; }
+    return Math.max(-400, Math.min(400, x));
+  }
+  function updateBend(dt, st) {
+    const v = (st.speed || 0) / 3.6, kb = Math.min(1, dt * 2);
+    const kNow = st.steer != null ? Math.tan(st.steer * Math.PI / 180) / 2.6
+      : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
+    bend.k += (Math.max(-0.08, Math.min(0.08, kNow)) - bend.k) * kb;
+    const nav = st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
+    const near = nav ? Math.min(1, Math.max(0, (180 - nav.distance) / 60)) : 0;
+    bend.amount += ((nav ? nav.amount * near : 0) - bend.amount) * kb;
+    if (nav) { bend.dir = nav.dir; bend.at = nav.distance; }
+  }
+
   function drawRoad(mode) {
     const grass = GRASS[mode], road = ROAD[mode];
     for (let y = HZ; y < H; y++) {
       const p = (y - HZ + 1) / (H - HZ);
       const z = 2.2 / p;
       const seg = Math.floor((z + travel) / 4) & 1;
-      const half = 10 + p * 170, cx = W / 2;
+      const half = 10 + p * 170;
+      const cx = W / 2 + Math.max(-600, Math.min(600, roadOffset(z) * half / 4.5));   // 4.5 m = half the road
       rect(0, y, W, 1, grass[seg]);
       rect(cx - half, y, half * 2, 1, road[seg]);
       const kerb = 1 + p * 14, kc = seg ? '#e8e2d0' : '#d6303b';
@@ -119,6 +139,7 @@ function create(canvas) {
       travel += (speed / 3.6) * dt;
       carScale += ((st.nav ? 0.72 : 1) - carScale) * Math.min(1, dt * 4);
       drawSky(mode, st.bearing);
+      updateBend(dt, st);
       drawRoad(mode);
       if (vehicle && vehicle.draw) {
         const bounce = speed > 3 ? Math.round(Math.sin(tSec * 18) * 0.6) : 0;
