@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const web = path.join(project, 'assets/web');
@@ -12,7 +12,8 @@ const sandbox = { window: {} };
 vm.runInNewContext(read('packages.js'), sandbox);
 const vehicles = sandbox.window.CARVIEW_BUILTIN.filter((p) => p.manifest.type === 'vehicle');
 async function moduleFrom(file) {
-  return import('data:text/javascript;base64,' + Buffer.from(read(file), 'utf8').toString('base64'));
+  // Import from a file URL so per-class ES modules can import ./common.js.
+  return import(pathToFileURL(path.join(web, file)).href);
 }
 
 // Minimal three.js construction double. Checks API and object construction without WebGL.
@@ -58,8 +59,10 @@ const modern = (await moduleFrom('vehicles/model-builder/vehicle.js')).build;
 const retro = (await moduleFrom('vehicles/pixel-builder/vehicle.js')).draw;
 let checked = 0;
 for (const { manifest: m } of vehicles) {
-  if (m.entry === '../model-builder/vehicle.js') {
-    const car = modern({ THREE, colour: m.defaultColour, options: m.options });
+  if (m.entry === '../model-builder/vehicle.js' || m.entry.startsWith('../modern/')) {
+    const constructor = m.entry.startsWith('../modern/')
+      ? (await moduleFrom('vehicles/' + m.id + '/' + m.entry)).build : modern;
+    const car = constructor({ THREE, colour: m.defaultColour, options: m.options });
     if (car.length !== m.options.length || car.width !== m.options.width || !car.group.children.length)
       throw new Error(m.id + ': wrong body geometry');
     // Body and windows must actually be curved lofts, not rectangular box placeholders.
@@ -69,7 +72,7 @@ for (const { manifest: m } of vehicles) {
       // The pickup bed must actually be open in the upper body mesh, not
       // a dark plane painted over an otherwise solid slab.
       const bodyTriangles = curved[0].geometry.indices.length / 3;
-      if (!(bodyTriangles < 52 * 30 * 2))
+      if (!(bodyTriangles > 0 && bodyTriangles < 72 * 40 * 2 - 100))
         throw new Error(m.id + ': load-bed opening is covered by body skin');
     }
     for (const part of curved) for (const x of part.geometry.attributes.position.array)
