@@ -13,7 +13,25 @@ jobs:
           node-version: '22'
       - name: Validate manifests and JavaScript
         run: node tools/check-vehicles.mjs
+      - name: Validate preview scripts
+        run: |
+          node --check assets/web/app.js
+          node --check assets/web/sdk/previews.js
       - name: Smoke-test model renderers
         run: node tools/smoke-vehicles.mjs
       - name: Verify detailed Logan geometry and controls
         run: node tools/check-logan.mjs
+      - name: Render and validate all vehicle thumbnails in Chrome
+        shell: bash
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium || true)"
+          if [ -z "$CHROME" ]; then
+            echo "Chrome not installed; skipping optional browser rendering"
+            exit 0
+          fi
+          CHROME="$CHROME" node tools/capture-gallery.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: carview-vehicle-gallery
+          path: preview-artifacts/*
+          if-no-files-found: ignore
