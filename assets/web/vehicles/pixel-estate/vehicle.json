@@ -6,5 +6,16 @@
   "author": "CarView",
   "license": "GPL-3.0-or-later",
   "family": "pixel-16bit",
-  "entry": "vehicle.js"
+  "entry": "vehicle.js",
+  "make": "CarView",
+  "model": "Pixel Estate",
+  "body": "estate",
+  "years": "Concept",
+  "tags": [
+    "pixel",
+    "retro",
+    "wagon",
+    "family"
+  ],
+  "defaultColour": "#1f3a6e"
 }

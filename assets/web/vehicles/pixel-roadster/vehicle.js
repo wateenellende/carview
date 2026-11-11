@@ -22,9 +22,14 @@ export function draw(g, p) {
   rect(x + 21 * sc, y + 1 * sc, 7 * sc, 2 * sc, 'rgba(255,255,255,0.2)');
   if (doors.tailgate) rect(x + 6 * sc, y - 6 * sc, w - 12 * sc, 5 * sc, dark);    // boot lid up
   else rect(x + 4 * sc, y + 6 * sc, w - 8 * sc, 3 * sc, dark);                   // ducktail spoiler
+  rect(x + 5 * sc, y + 4 * sc, 3 * sc, 5 * sc, dark);                           // spoiler mountings
+  rect(x + w - 8 * sc, y + 4 * sc, 3 * sc, 5 * sc, dark);
   const tl = lit ? '#ff3b3b' : '#8a2430';
   rect(x + 3 * sc, y + 12 * sc, w - 6 * sc, 3 * sc, tl);                          // full-width light bar
   if (lit) rect(x + 3 * sc, y + 12 * sc, w - 6 * sc, 1, '#ffb0b0');
+  rect(x + 7 * sc, y + 16 * sc, 12 * sc, 2 * sc, dark);                         // rear vents
+  rect(x + w - 19 * sc, y + 16 * sc, 12 * sc, 2 * sc, dark);
+  rect(cx - 8 * sc, y + 6 * sc, 16 * sc, 2 * sc, lit ? '#ff4d5d' : '#61252e'); // centre brake light
   rect(x, by - 9 * sc, w, 4 * sc, dark);                                          // diffuser
   rect(cx - 10 * sc, y + 17 * sc, 20 * sc, 5 * sc, '#f2ecd8');                    // plate
   rect(cx - 10 * sc, y + 17 * sc, 3 * sc, 5 * sc, '#2a50b0');

@@ -7,5 +7,16 @@
   "license": "GPL-3.0-or-later",
   "family": "pixel-16bit",
   "entry": "vehicle.js",
-  "defaultColour": "#b3262f"
+  "defaultColour": "#b3262f",
+  "make": "CarView",
+  "model": "Pixel Roadster",
+  "body": "roadster",
+  "years": "Concept",
+  "tags": [
+    "pixel",
+    "retro",
+    "sports",
+    "two-door",
+    "convertible"
+  ]
 }

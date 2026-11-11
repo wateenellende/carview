@@ -2,12 +2,7 @@
 // Vehicle "Logan MCV" (family three-pbr): procedural Dacia Logan MCV II-style estate, built from lofted cross-sections.
 // Local axes: +x = forward (rear bumper at x=0, front bumper at x=L), +y = up, +z = right side, -z = driver side.
 // Everything here is generated in code: no external model, no licence strings attached.
-let THREE;                  // handed in by the theme (family three-pbr), so every theme and vehicle share one three.js
-
-const L = 4.49, WIDTH = 1.73;
-const AXLE_R = 0.8, AXLE_F = 3.68;
-let WHEEL_R = 0.31;         // options.wheelRadius   // real Logan MCV II: ~2.9 m wheelbase, short rear overhang
-
+// The reference shape is refined below by the options supplied for each build.
 // smooth piecewise interpolation through [x, value] keys
 function keys(k) {
   return (x) => {
@@ -23,6 +18,35 @@ function keys(k) {
   };
 }
 
+export function buildCar(opts = {}) {
+  // Keep the detailed Logan mesh authored in its original 4.49 x 1.73 m reference
+  // coordinates. The manifest defines the output dimensions and the lofted roof.
+  // Profile helpers are scoped to each build, so two differently configured cars
+  // cannot modify each other's surfaces or wheel radii.
+  const THREE = opts.THREE;
+  if (!THREE) throw new Error('A three.js instance is required');
+  const o = opts.options || {};
+  const dimension = (v, fallback, lo, hi) =>
+    typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : fallback;
+  const L = 4.49, WIDTH = 1.73, BASE_ROOF = 1.525;
+  const length = dimension(o.length, L, 3.9, 5.2);
+  const width = dimension(o.width, WIDTH, 1.55, 2.05);
+  const sx = length / L, sz = width / WIDTH;
+  const WHEEL_R = dimension(o.wheelRadius, 0.31, 0.27, 0.40);
+  const ride = dimension(o.rideHeight, 0, 0, 0.15);
+  const archTube = dimension(o.archTube, 0.035, 0.02, 0.09);
+  const rearAxle = dimension(o.rearOverhang, 0.8 * sx, 0.55, 1.1);
+  const wheelbase = dimension(o.wheelbase, 2.88 * sx, 2.5, 3.15);
+  if (rearAxle + wheelbase >= length - 0.40) throw new Error('Axles must fit within the vehicle length');
+  const AXLE_R = rearAxle / sx, AXLE_F = (rearAxle + wheelbase) / sx;
+  const roofHeight = dimension(o.roofHeight, BASE_ROOF, 1.36, 1.72);
+  const roofWidth = dimension(o.roofWidth, 0.61, 0.51, 0.72);
+  const G0 = dimension(o.rearRoofX, 0.035, 0.03, 0.14);
+  const G1 = dimension(o.windscreenX, 3.47, 3.30, 3.60);
+  const colour = opts.colour ?? 0x1b3a7a;
+
+  // The fixed body and trim remain at high detail; the upper loft is driven
+  // independently by roof, windscreen and rear-roof positions from vehicle.json.
 // ---- lower body (everything below the window line) ----
 const bodyTop = keys([[0, 0.98], [0.05, 1.03], [0.35, 1.05], [2.0, 1.03], [3.3, 1.01], [3.62, 0.99], [4.2, 0.94], [4.42, 0.88], [4.49, 0.74]]);
 const bodyBot = keys([[0, 0.34], [0.12, 0.25], [0.5, 0.2], [3.95, 0.2], [4.34, 0.25], [4.49, 0.34]]);
@@ -37,18 +61,21 @@ const E = 5.5;                     // superellipse exponent: boxy with rounded e
 const se = (v) => Math.sign(v) * Math.pow(Math.abs(v), 2 / E);
 
 // theta: 0 = right side (+z) mid-height, PI/2 = top, PI = left side (-z), 3PI/2 = bottom
-export function bodySurf(x, th) {
+function bodySurf(x, th) {
   const yb = bodyBot(x), yt = bodyTop(x), hw = halfW(x);
   const yc = (yb + yt) / 2, hh = (yt - yb) / 2;
   return new THREE.Vector3(x, yc + hh * se(Math.sin(th)), hw * se(Math.cos(th)));
 }
 
 // ---- greenhouse (glass + roof) ----
-const roofY = keys([[0.035, 1.42], [0.12, 1.49], [0.45, 1.51], [1.6, 1.525], [2.55, 1.505], [2.82, 1.45], [3.47, 1.0]]);
-const roofHW = keys([[0.035, 0.57], [0.3, 0.6], [2.6, 0.61], [3.47, 0.66]]);
-const G0 = 0.035, G1 = 3.47;
+const deltaRoof = roofHeight - BASE_ROOF;
+const roofY = keys([[G0, 1.42 + deltaRoof * 0.75], [0.15, 1.49 + deltaRoof * 0.9],
+  [0.45, roofHeight - 0.015], [1.6, roofHeight], [2.55, roofHeight - 0.020],
+  [Math.max(2.65, G1 - 0.65), roofHeight - 0.075], [G1, bodyTop(G1) + 0.002]]);
+const roofHW = keys([[G0, roofWidth * 0.934], [0.3, roofWidth * 0.984],
+  [2.6, roofWidth], [G1, roofWidth * 1.082]]);
 // s: 0 = right belt line, 0.5 = roof centre, 1 = left belt line
-export function glassSurf(x, s) {
+function glassSurf(x, s) {
   const yb = bodyTop(x) - 0.012, yr = Math.max(yb + 0.002, roofY(x));
   const hwb = halfW(x) - 0.035, hwt = roofHW(x);
   const a = Math.PI * s, sn = Math.max(0, Math.sin(a));
@@ -104,13 +131,7 @@ function capAt(surf, x, t0, t1, nt, mat, flip) {
 
 const TAU = Math.PI * 2;
 
-export function buildCar(opts = {}) {
-  THREE = opts.THREE || THREE;
-  const o = opts.options || {};
-  WHEEL_R = o.wheelRadius || 0.31;
-  const ride = o.rideHeight || 0;          // extra ground clearance in metres (crossover look)
-  const archTube = o.archTube || 0.035;    // thickness of the black wheel-arch trim
-  const colour = opts.colour ?? 0x1b3a7a;
+
   const M = {
     // less metallic + softer clearcoat: the roof stays blue instead of mirroring the sky as a silver slab
     paint: new THREE.MeshPhysicalMaterial({ color: colour, metalness: 0.2, roughness: 0.38, clearcoat: 0.7, clearcoatRoughness: 0.18, specularIntensity: 0.55, envMapIntensity: 0.45, side: THREE.DoubleSide }),
@@ -197,6 +218,13 @@ export function buildCar(opts = {}) {
   const panel = new THREE.Mesh(panelG, M.paint);
   panel.rotation.y = -Math.PI / 2; panel.position.x = -0.008;
   tg.add(panel, plate, handle);
+  // Rear-window wiper, high-mounted stop lamp and a raised chrome badge: visible in the driving view.
+  const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.48), M.plastic);
+  wiper.position.set(-0.024, 1.16, -0.08); wiper.rotation.x = 0.10; tg.add(wiper);
+  const thirdLamp = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.045, 0.34), M.tail);
+  thirdLamp.position.set(-0.023, 1.435, 0); tg.add(thirdLamp);
+  const badge = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.032, 0.22), M.chrome);
+  badge.position.set(-0.031, 0.85, 0); tg.add(badge);
   tg.position.sub(hingeT);
   tgPivot.add(tg);
   car.add(tgPivot);
@@ -212,6 +240,26 @@ export function buildCar(opts = {}) {
   grille.position.set(L + 0.004, 0.68, 0); grille.rotation.y = Math.PI / 2; car.add(grille);
   const grilleBar = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.025, 0.74), M.chrome);
   grilleBar.position.set(L + 0.008, 0.72, 0); car.add(grilleBar);
+  // Fog lights, rear reflectors and exhaust complete the front/rear bumper geometry.
+  for (const side of [-1, 1]) {
+    const fog = new THREE.Mesh(new THREE.BoxGeometry(0.017, 0.075, 0.13), M.head);
+    fog.position.set(L + 0.012, 0.42, side * 0.58); car.add(fog);
+    const reflector = new THREE.Mesh(new THREE.BoxGeometry(0.017, 0.06, 0.17), M.tail);
+    reflector.position.set(-0.014, 0.37, side * 0.61); car.add(reflector);
+  }
+  const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.12, 12), M.chrome);
+  exhaust.rotation.z = Math.PI / 2; exhaust.position.set(-0.075, 0.29, 0.53); car.add(exhaust);
+  if (o.cladding) {
+    // Stepway-style raised sill protection and satin skid plates distinguish the crossover.
+    for (const side of [-1, 1]) {
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.14, 0.05), M.plastic);
+      sill.position.set(2.25, 0.31, side * (WIDTH / 2 + 0.015)); car.add(sill);
+    }
+    for (const xx of [0.003, L + 0.003]) {
+      const skid = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.17, 0.85), M.chrome);
+      skid.position.set(xx, 0.39, 0); car.add(skid);
+    }
+  }
 
   // wheels and arches
   const wheels = [];
@@ -227,11 +275,15 @@ export function buildCar(opts = {}) {
       sp.position.z = side * 0.104; sp.rotation.z = (k / 5) * Math.PI; w.add(sp);
     }
     w.position.set(ax, WHEEL_R - ride, z);   // wheels stay on the ground when the body is raised
+    w.scale.x = 1 / sx;                    // keep tyres circular after body length scaling
+    w.scale.z = 1 / sz;                    // wheel width does not grow with vehicle width
     car.add(w); wheels.push(w);
-    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.39, archTube, 8, 32, Math.PI), M.plastic);
-    arch.position.set(ax, WHEEL_R, side * (halfW(ax) + 0.004)); car.add(arch);
-    const well = new THREE.Mesh(new THREE.CircleGeometry(0.385, 32, 0, Math.PI), M.cabin);
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(WHEEL_R + 0.08, archTube, 8, 32, Math.PI), M.plastic);
+    arch.position.set(ax, WHEEL_R, side * (halfW(ax) + 0.004));
+    arch.scale.x = 1 / sx; car.add(arch);
+    const well = new THREE.Mesh(new THREE.CircleGeometry(WHEEL_R + 0.075, 32, 0, Math.PI), M.cabin);
     well.position.set(ax, WHEEL_R, side * (halfW(ax) + 0.002));
+    well.scale.x = 1 / sx;
     if (side < 0) well.rotation.y = Math.PI;
     car.add(well);
   }
@@ -243,9 +295,8 @@ export function buildCar(opts = {}) {
     const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.08), M.plastic); stalk.position.set(3.25, 1.05, side * (halfW(3.22) - 0.02)); car.add(stalk);
   }
 
-  // rear roof spoiler over the tailgate glass
-  // roof rails
-  for (const s of [0.24, 0.76]) {
+  // Roof rails are optional for themes that reuse the builder, and thicker on the crossover.
+  if (o.roofRails !== false) for (const s of [0.24, 0.76]) {
     const pts = [];
     for (let i = 0; i <= 12; i++) { const x = 0.35 + (2.25 * i) / 12; pts.push(glassSurf(x, s).add(new THREE.Vector3(0, 0.06, 0))); }
     car.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.017, 8), M.plastic));
@@ -253,6 +304,10 @@ export function buildCar(opts = {}) {
       const f = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.04), M.plastic);
       f.position.copy(glassSurf(x, s)).add(new THREE.Vector3(0, 0.035, 0)); car.add(f);
     }
+  }
+  if (o.cladding) for (const x of [0.8, 2.3]) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.035, 0.95), M.plastic);
+    bar.position.copy(glassSurf(x, 0.5)).add(new THREE.Vector3(0, 0.11, 0)); car.add(bar);
   }
 
   // doors: skins that sit on the body and hinge at their front edge
@@ -284,6 +339,7 @@ export function buildCar(opts = {}) {
 
   // tailgate opening is shown as a raised angle on the whole rear glass + panel? kept simple: flag only
   car.position.y = ride;
+  car.scale.set(sx, 1, sz);
   const api = {
     group: car,
     materials: M,
@@ -312,7 +368,7 @@ export function buildCar(opts = {}) {
     },
     snapDoors() { for (const d of Object.values(doors)) if (d.target != null) d.pivot.rotation.y = d.target; if (tailgate.target != null) tailgate.pivot.rotation.z = tailgate.target; },
     doorNames: ['frontLeft', 'rearLeft', 'frontRight', 'rearRight', 'tailgate'],
-    length: L, width: WIDTH,
+    length, width,
   };
   return api;
 }

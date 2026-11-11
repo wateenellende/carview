@@ -1,0 +1,26 @@
+{
+  "type": "vehicle",
+  "id": "pixel-city-hatch",
+  "name": "City Hatchback (Retro)",
+  "make": "CarView",
+  "model": "City",
+  "body": "hatchback",
+  "years": "Concept",
+  "tags": [
+    "retro",
+    "pixel",
+    "compact",
+    "small",
+    "urban",
+    "city"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "pixel-16bit",
+  "entry": "../pixel-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "hatchback"
+  },
+  "defaultColour": "#37a7b6"
+}

@@ -1,0 +1,26 @@
+{
+  "type": "vehicle",
+  "id": "pixel-trail-suv",
+  "name": "Trail SUV (Retro)",
+  "make": "CarView",
+  "model": "Trail",
+  "body": "suv",
+  "years": "Concept",
+  "tags": [
+    "retro",
+    "pixel",
+    "suv",
+    "crossover",
+    "high-clearance",
+    "family"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "pixel-16bit",
+  "entry": "../pixel-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "suv"
+  },
+  "defaultColour": "#497551"
+}

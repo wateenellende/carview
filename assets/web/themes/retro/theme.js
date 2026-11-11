@@ -33,6 +33,7 @@ function create(canvas) {
   };
 
   let vehicle = null;
+  let vehicleOptions = {};
   let travel = 0, tSec = 0, carScale = 1, swayX = 0, swayT = 0;
   let lastBox = null;                         // vehicle box in scene pixels, for tapping
   const DROPS = Array.from({ length: 140 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: 0.6 + Math.random() * 0.8 }));
@@ -103,7 +104,10 @@ function create(canvas) {
   }
 
   return {
-    setVehicle(mod) { vehicle = mod.default || mod; },
+    setVehicle(mod, manifest) {
+      vehicle = mod.default || mod;
+      vehicleOptions = (manifest && manifest.options) || {};
+    },
     vehicleRect() {
       if (!lastBox) return null;
       const fx = window.innerWidth / W, fy = window.innerHeight / H;
@@ -121,7 +125,7 @@ function create(canvas) {
         lastBox = vehicle.draw(g, {
           cx: W / 2 + swayX, by: 132 + 40 * carScale + bounce, scale: carScale, horizon: HZ,
           colour: st.colour || '#1f3a6e', lit: st.lights === true, doors: st.doors || {}, speed, time: tSec,
-          shade, rect, poly,
+          shade, rect, poly, options: vehicleOptions,
         }) || null;
       }
       drawWeather(mode, st.wx || {}, speed, dt);

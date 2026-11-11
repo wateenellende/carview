@@ -1,0 +1,26 @@
+{
+  "type": "vehicle",
+  "id": "pixel-cargo-van",
+  "name": "Cargo Van (Retro)",
+  "make": "CarView",
+  "model": "Cargo",
+  "body": "van",
+  "years": "Concept",
+  "tags": [
+    "retro",
+    "pixel",
+    "commercial",
+    "van",
+    "tall",
+    "cargo"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "pixel-16bit",
+  "entry": "../pixel-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "van"
+  },
+  "defaultColour": "#e3e7ec"
+}

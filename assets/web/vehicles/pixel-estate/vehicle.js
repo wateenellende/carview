@@ -25,6 +25,9 @@ export function draw(g, p) {
   rect(x, y + 12 * sc, w, h - 18 * sc, body);                                     // body
   rect(x, y + 12 * sc, w, 2 * sc, light);                                         // shoulder highlight
   rect(x + 7 * sc, y, w - 14 * sc, 13 * sc, body);                                // roof / cabin (estate)
+  rect(x + 11 * sc, y - 4 * sc, 3 * sc, 6 * sc, dark);                          // roof rail feet
+  rect(x + w - 14 * sc, y - 4 * sc, 3 * sc, 6 * sc, dark);
+  rect(x + 10 * sc, y - 4 * sc, w - 20 * sc, 2 * sc, light);                    // roof rack crossbar
   rect(x + 7 * sc, y, w - 14 * sc, 2 * sc, light);
   if (doors.tailgate) {                         // tailgate swung up: dark luggage space, lid above the roof
     rect(x + 6 * sc, y + 3 * sc, w - 12 * sc, 22 * sc, '#0d0f14');
@@ -33,12 +36,17 @@ export function draw(g, p) {
   } else {
     rect(x + 10 * sc, y + 3 * sc, w - 20 * sc, 9 * sc, glass);                    // rear window
     rect(x + 12 * sc, y + 4 * sc, 8 * sc, 2 * sc, 'rgba(255,255,255,0.18)');
+    rect(cx - 14 * sc, y + 11 * sc, 28 * sc, 1 * sc, '#53606c');              // rear wiper
+    rect(cx + 9 * sc, y + 10 * sc, 3 * sc, 2 * sc, dark);                     // wiper pivot
   }
   rect(x, by - 12 * sc, w, 6 * sc, dark);                                          // bumper
   const tl = lit ? '#ff3b3b' : '#8a2430';
   rect(x + 1 * sc, y + 16 * sc, 13 * sc, 6 * sc, tl);                             // tail lights
   rect(x + w - 14 * sc, y + 16 * sc, 13 * sc, 6 * sc, tl);
   if (lit) { rect(x + 1 * sc, y + 16 * sc, 13 * sc, 1, '#ffb0b0'); rect(x + w - 14 * sc, y + 16 * sc, 13 * sc, 1, '#ffb0b0'); }
+  rect(cx - 8 * sc, y + 1 * sc, 16 * sc, 2 * sc, lit ? '#ff6671' : '#5b202a'); // high stop lamp
+  rect(x + 4 * sc, by - 10 * sc, 10 * sc, 2 * sc, '#a5a9ac');                  // bumper reflector trim
+  rect(x + w - 14 * sc, by - 10 * sc, 10 * sc, 2 * sc, '#a5a9ac');
   rect(cx - 11 * sc, y + 24 * sc, 22 * sc, 6 * sc, '#f2ecd8');                    // number plate
   rect(cx - 11 * sc, y + 24 * sc, 3 * sc, 6 * sc, '#2a50b0');
   return { x: x - 16 * sc, y: y - 12 * sc, w: w + 32 * sc, h: h + 14 * sc };

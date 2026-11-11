@@ -1,0 +1,37 @@
+{
+  "type": "vehicle",
+  "id": "trail-suv",
+  "name": "Trail SUV",
+  "make": "CarView",
+  "model": "Trail",
+  "body": "suv",
+  "years": "Concept",
+  "tags": [
+    "suv",
+    "crossover",
+    "high-clearance",
+    "family"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "three-pbr",
+  "entry": "../model-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "suv",
+    "length": 4.6,
+    "width": 1.93,
+    "height": 1.72,
+    "rearOverhang": 0.8,
+    "wheelbase": 2.75,
+    "wheelRadius": 0.36,
+    "groundClearance": 0.24,
+    "beltHeight": 1.08,
+    "cabinRear": 0.19,
+    "cabinFront": 3.86,
+    "roofFlatStart": 0.44,
+    "roofFlatEnd": 3.45,
+    "doors": 4
+  },
+  "defaultColour": "#497551"
+}

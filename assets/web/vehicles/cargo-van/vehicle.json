@@ -1,0 +1,37 @@
+{
+  "type": "vehicle",
+  "id": "cargo-van",
+  "name": "Cargo Van",
+  "make": "CarView",
+  "model": "Cargo",
+  "body": "van",
+  "years": "Concept",
+  "tags": [
+    "commercial",
+    "van",
+    "tall",
+    "cargo"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "three-pbr",
+  "entry": "../model-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "van",
+    "length": 5.16,
+    "width": 1.97,
+    "height": 2.14,
+    "rearOverhang": 0.87,
+    "wheelbase": 3.2,
+    "wheelRadius": 0.35,
+    "groundClearance": 0.18,
+    "beltHeight": 1.39,
+    "cabinRear": 0.1,
+    "cabinFront": 4.58,
+    "roofFlatStart": 0.22,
+    "roofFlatEnd": 4.3,
+    "doors": 4
+  },
+  "defaultColour": "#e3e7ec"
+}

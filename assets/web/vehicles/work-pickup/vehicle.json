@@ -1,0 +1,37 @@
+{
+  "type": "vehicle",
+  "id": "work-pickup",
+  "name": "Work Pickup",
+  "make": "CarView",
+  "model": "Work",
+  "body": "pickup",
+  "years": "Concept",
+  "tags": [
+    "truck",
+    "utility",
+    "bed",
+    "two-door"
+  ],
+  "version": "1.0.0",
+  "author": "CarView",
+  "license": "GPL-3.0-or-later",
+  "family": "three-pbr",
+  "entry": "../model-builder/vehicle.js",
+  "options": {
+    "bodyStyle": "pickup",
+    "length": 5.1,
+    "width": 1.96,
+    "height": 1.75,
+    "rearOverhang": 1.12,
+    "wheelbase": 3.15,
+    "wheelRadius": 0.37,
+    "groundClearance": 0.25,
+    "beltHeight": 1.15,
+    "cabinRear": 2.2,
+    "cabinFront": 4.25,
+    "roofFlatStart": 2.52,
+    "roofFlatEnd": 3.76,
+    "doors": 2
+  },
+  "defaultColour": "#c68b48"
+}
