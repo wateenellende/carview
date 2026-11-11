@@ -65,6 +65,13 @@ for (const { manifest: m } of vehicles) {
     // Body and windows must actually be curved lofts, not rectangular box placeholders.
     const curved = car.group.children.filter((part) => part.geometry instanceof BufferGeometry);
     if (curved.length < 8) throw new Error(m.id + ': expected curved body, window and lamp meshes');
+    if (m.options.bodyStyle === 'pickup') {
+      // The pickup bed must actually be open in the upper body mesh, not
+      // a dark plane painted over an otherwise solid slab.
+      const bodyTriangles = curved[0].geometry.indices.length / 3;
+      if (!(bodyTriangles < 52 * 30 * 2))
+        throw new Error(m.id + ': load-bed opening is covered by body skin');
+    }
     for (const part of curved) for (const x of part.geometry.attributes.position.array)
       if (!Number.isFinite(x)) throw new Error(m.id + ': invalid loft vertex');
     // Closed, filled front/rear sections are essential; an uncapped body looks
