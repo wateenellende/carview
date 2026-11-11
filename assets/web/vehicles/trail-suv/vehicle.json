@@ -16,7 +16,7 @@
   "author": "CarView",
   "license": "GPL-3.0-or-later",
   "family": "three-pbr",
-  "entry": "../model-builder/vehicle.js",
+  "entry": "../modern/trail-suv.js",
   "options": {
     "bodyStyle": "suv",
     "length": 4.72,
