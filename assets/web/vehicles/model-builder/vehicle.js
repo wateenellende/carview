@@ -27,7 +27,7 @@ const gaussian = (x, center, width) => Math.exp(-Math.pow((x - center) / width, 
 
 // Surface mesher with shared vertices, triangle indices and computed smooth normals.
 // Offsets are used for body seams, glass and doors without hard edged cuboids.
-function surface(THREE, fn, u0, u1, v0, v1, nu, nv, material, offset = 0) {
+function surface(THREE, fn, u0, u1, v0, v1, nu, nv, material, offset = 0, skipFace = null) {
   const vertices = [], indices = [];
   for (let i = 0; i <= nu; i++) for (let j = 0; j <= nv; j++) {
     const u = interp(u0, u1, i / nu), v = interp(v0, v1, j / nv);
@@ -37,6 +37,9 @@ function surface(THREE, fn, u0, u1, v0, v1, nu, nv, material, offset = 0) {
     vertices.push(p[0], p[1] + offset * Math.sin(v), p[2] + offset * Math.cos(v));
   }
   for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+    const midU = interp(u0, u1, (i + 0.5) / nu);
+    const midV = interp(v0, v1, (j + 0.5) / nv);
+    if (skipFace && skipFace(midU, midV)) continue;
     const a = i * (nv + 1) + j, b = a + nv + 1;
     indices.push(a, b, a + 1, b, b + 1, a + 1);
   }
@@ -137,7 +140,12 @@ export function build({ THREE, colour = '#1f3a6e', options = {} }) {
     return [x, mid + halfH * sy,
       (halfWidth(x) - sidePinch + waist) * ellipse(Math.cos(v), sectionZ)];
   }
-  root.add(surface(THREE, bodyPoint, 0, length, 0, TAU, 52, 30, paint));
+  // The pickup bed needs a real opening: skip the upper shell triangles over
+  // the load floor. Otherwise a body-coloured deck hides its ribbed liner.
+  const bedOpening = style === 'pickup'
+    ? (x, angle) => x < rear - 0.10 && angle > PI * 0.15 && angle < PI * 0.85
+    : null;
+  root.add(surface(THREE, bodyPoint, 0, length, 0, TAU, 52, 30, paint, 0, bedOpening));
   root.add(endCap(THREE, bodyPoint, 0, paint));
   root.add(endCap(THREE, bodyPoint, length, paint));
 
