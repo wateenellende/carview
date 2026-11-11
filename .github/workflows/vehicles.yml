@@ -3,6 +3,10 @@ on:
   pull_request:
   push:
     branches: [main]
+# Keep only the newest PR head: intermediate one-file commits are superseded.
+concurrency:
+  group: vehicle-catalogue-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   models:
     runs-on: ubuntu-latest
