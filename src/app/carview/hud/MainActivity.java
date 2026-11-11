@@ -68,6 +68,8 @@ public class MainActivity extends Activity {
     private boolean pageReady;
     private final Handler h = new Handler(Looper.getMainLooper());
     private LocationManager lm;
+    private static final int REQ_LOCATION = 9;
+    private boolean locationListening;
     private Location lastLoc;
     private long lastTempFetch;
     private String lastLocJson = "{}", lastGpsJson = "{}", lastTempJson = "null";
@@ -118,13 +120,28 @@ public class MainActivity extends Activity {
         else registerReceiver(contactsRx, pf);
         if ("[]".equals(btContacts())) h.postDelayed(this::requestContacts, 5000);   // no Bluetooth phonebook saved yet: ask for one
 
-        startLocation();
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            startLocation();
+        } else {
+            // Android 12+ ignores a request for FINE location unless COARSE is requested in the same call.
+            requestPermissions(new String[] { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }, REQ_LOCATION);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_LOCATION) return;
+        startLocation();                   // starts only if precise location was granted (GPS speed needs it)
+        send("access", access().toString());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         current = this;
+        // Location may have been enabled in system settings while CarView was away.
+        startLocation();
         pushAll();
     }
 
@@ -426,11 +443,13 @@ public class MainActivity extends Activity {
 
     @SuppressLint("MissingPermission")
     private void startLocation() {
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        if (locationListening || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
         lm = getSystemService(LocationManager.class);
+        if (lm == null) return;
         try {
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 0, locL, Looper.getMainLooper());
-            lm.registerGnssStatusCallback(gnss, h);
+            locationListening = true; // Avoid duplicate subscriptions when permission is granted or the app resumes.
+            try { lm.registerGnssStatusCallback(gnss, h); } catch (Exception ignored) { }
             Location last = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             if (last != null && System.currentTimeMillis() - last.getTime() < 3 * 3600 * 1000) fetchTemperature(last);
         } catch (Exception ignored) { }
