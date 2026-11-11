@@ -16,13 +16,21 @@
     "estate",
     "wagon",
     "family",
-    "logaan",
+    "logan",
     "dacia",
     "mcv"
   ],
   "options": {
     "wheelRadius": 0.31,
     "rideHeight": 0,
-    "archTube": 0.035
+    "archTube": 0.035,
+    "length": 4.49,
+    "width": 1.73,
+    "rearOverhang": 0.8,
+    "wheelbase": 2.88,
+    "roofHeight": 1.525,
+    "roofWidth": 0.61,
+    "rearRoofX": 0.035,
+    "windscreenX": 3.47
   }
 }
