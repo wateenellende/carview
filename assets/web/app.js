@@ -481,6 +481,101 @@ function chooser(row, items, isOn, pick) {
   });
 }
 
+// Only bundled vehicle modules are executed in the thumbnail frame. Android's
+// native bridge can be injected into iframes, so installed package code is never
+// evaluated for thumbnails. One renderer is shared among all bundled vehicles.
+let previewsStarted = false, previewsReady = false;
+const previewCache = new Map();
+function previewKey(v, family) {
+  // Include the complete manifest, not only options: upgraded packaged art
+  // and entry points must not reuse stale cached thumbnails.
+  return family + '|' + v.base + '|' + JSON.stringify(v.manifest) + '|' + vehicleColour(v);
+}
+function requestVehiclePreviews() {
+  if (!previewsReady || $('settings').hidden) return;
+  const t = currentTheme();
+  if (!t) return;
+  // Android can inject addJavascriptInterface into child frames even when sandboxed.
+  // Never execute imported third-party package code just to create a thumbnail.
+  const items = vehiclesFor(t).filter((v) => v.builtin && matchesVehicle(v, $('vehicleSearch').value))
+    .map((v) => ({
+      key: previewKey(v, t.manifest.family), url: urlOf(v, v.manifest.entry),
+      family: t.manifest.family, options: v.manifest.options || {},
+      colour: vehicleColour(v)
+    }));
+  $('previewFrame').contentWindow.postMessage({ type: 'render', items }, '*');
+}
+function startVehiclePreviews() {
+  if (previewsStarted) return;
+  previewsStarted = true;
+  const f = $('previewFrame');
+  if (SANDBOX) f.setAttribute('sandbox', 'allow-scripts'); else f.removeAttribute('sandbox');
+  f.src = 'sdk/previews.html';
+}
+window.addEventListener('message', (e) => {
+  if (e.source !== $('previewFrame').contentWindow || e.data?.carviewPreview !== 1) return;
+  const m = e.data;
+  if (m.type === 'ready') {
+    previewsReady = true;
+    requestVehiclePreviews();
+  } else if (m.type === 'image' && typeof m.key === 'string' &&
+             typeof m.image === 'string' && m.image.startsWith('data:image/png;base64,')) {
+    previewCache.set(m.key, m.image);
+    if (previewCache.size > 70) previewCache.delete(previewCache.keys().next().value);
+    document.querySelectorAll('#vehicleRow .vehicleTile').forEach((tile) => {
+      if (tile.dataset.previewKey === m.key) tile.querySelector('img').src = m.image;
+    });
+  } else if (m.type === 'error') {
+    document.querySelectorAll('#vehicleRow .vehicleTile').forEach((tile) => {
+      if (tile.dataset.previewKey === m.key) tile.title = 'Preview unavailable: ' + m.detail;
+    });
+  }
+});
+function renderVehicleCards(t, selected, choices) {
+  const grid = $('vehicleRow');
+  grid.replaceChildren();
+  for (const v of choices) {
+    const active = v === selected;
+    const key = previewKey(v, t.manifest.family);
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'vehicleTile';
+    tile.dataset.previewKey = key;
+    tile.setAttribute('aria-pressed', String(active));
+    tile.title = (v.manifest.make || '') + ' ' + (v.manifest.model || v.manifest.name);
+    const picture = document.createElement('span');
+    picture.className = 'vehiclePicture';
+    const image = document.createElement('img');
+    image.alt = 'Preview of ' + (v.manifest.name || v.manifest.id);
+    image.decoding = 'async';
+    if (previewCache.has(key)) image.src = previewCache.get(key);
+    else if (!v.builtin) {
+      // Third-party packages may supply a passive preview.png; no JS execution.
+      image.src = v.base + 'preview.png';
+      image.addEventListener('error', () => image.removeAttribute('src'), { once: true });
+    }
+    const chip = document.createElement('span');
+    chip.className = 'vehicleChip'; chip.style.background = vehicleColour(v);
+    picture.append(image, chip);
+    const info = document.createElement('span');
+    info.className = 'vehicleInfo';
+    const title = document.createElement('span');
+    title.className = 'vehicleName';
+    title.textContent = v.manifest.name || v.manifest.id;
+    const detail = document.createElement('span');
+    detail.className = 'vehicleType';
+    detail.textContent = [v.manifest.make, v.manifest.body].filter(Boolean).join(' · ');
+    info.append(title, detail);
+    tile.append(picture, info);
+    tile.addEventListener('click', () => {
+      cfg.vehicles[t.manifest.id] = v.manifest.id;
+      saveCfg();
+      sendScene({ type: 'vehicle', vehicle: vehicleMsg(v) });
+      openSettings();
+    });
+    grid.appendChild(tile);
+  }
+}
 $('vehicleSearch').addEventListener('input', openSettings);
 
 function openSettings() {
@@ -505,10 +600,7 @@ function openSettings() {
   const vehicleQuery = $('vehicleSearch').value;
   const choices = vehiclesFor(t).filter((it) => matchesVehicle(it, vehicleQuery));
   $('vehicleEmpty').hidden = choices.length !== 0;
-  chooser('vehicleRow', choices, (it) => it === v, (it) => {
-    cfg.vehicles[t.manifest.id] = it.manifest.id; saveCfg();
-    sendScene({ type: 'vehicle', vehicle: vehicleMsg(it) }); openSettings();
-  });
+  renderVehicleCards(t, v, choices);
   // installed (not built-in) packages can be removed again
   const pl = $('pkgList'); pl.innerHTML = '';
   packages.filter((p) => !p.builtin).forEach((p) => {
