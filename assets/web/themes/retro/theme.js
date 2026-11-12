@@ -84,7 +84,7 @@ function create(canvas) {
       : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
     bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * kb;
     const nav = st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
-    const near = nav ? Math.min(1, Math.max(0, (200 - nav.distance) / 60)) : 0;
+    const near = nav ? Math.min(1, Math.max(0, (450 - nav.distance) / 80)) : 0;   // drawn at 40% distance: visible from ~450 m
     bend.amount += ((nav ? nav.amount * near : 0) - bend.amount) * kb;
     // the flat pixel road squeezes everything past ~30 m into a few rows: show the fork closer than it really is
     if (nav) { bend.dir = nav.dir; bend.at = Math.max(0, nav.distance) * 0.4; }
