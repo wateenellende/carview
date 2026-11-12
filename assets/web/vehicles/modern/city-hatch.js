@@ -1,38 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Golf / Corolla / Civic-inspired compact: short rear overhang, pronounced
-// shoulder and practical hatchback glass with a narrow integrated roof spoiler.
+// Compact hatchback: short overhangs, a shoulder line that rises gently toward the tail, a steep rear screen
+// under a small roof spoiler and a tailgate that lifts from the roof.
 import { buildModern } from './common.js';
-const profile={
-  body:[
-    [0,.92,.78],[.045,.99,.91],[.17,1.04,1.035],
-    [.28,1.045,1.035],[.53,1.01,1.0],[.75,1.03,1.02],
-    [.89,.99,.98],[.98,.88,.82],[1,.84,.78],
-  ],
-  roof:[
-    [0,.06,.69],[.10,.64,.72],[.20,.94,.75],
-    [.39,1,.76],[.73,.99,.75],[.88,.81,.72],[1,.025,.70],
-  ],
-  backGlass:.19,frontGlass:.27,lamps:'wrap',
-  details({THREE,M,options:o,detail,line,roofY,halfW,shoulder}){
-    const x=o.cabinRear+.08,y=roofY(x);
-    // Short spoiler and high-mounted stop lamp on the hatch.
-    line([[x-.15,y-.03,-o.width*.35],[x-.19,y+.005,0],
-      [x-.15,y-.03,o.width*.35]],.023,M.paint);
-    line([[x-.16,y-.018,-.19],[x-.17,y-.008,0],
-      [x-.16,y-.018,.19]],.012,M.tail);
-    // Hatch handle and rear-window wiper sit on separate body components.
-    detail(new THREE.BoxGeometry(.023,.027,.22),M.black,
-      -.050,shoulder(0)-.19,0);
-    line([[-.057,shoulder(0)+.13,-.21],
-      [-.065,shoulder(0)+.11,.08]],.009,M.black);
-    // Compact air intake, front grille and lower sill trim.
-    detail(new THREE.BoxGeometry(.043,.15,o.width*.55),M.black,
-      o.length+.028,o.beltHeight-.29,0);
-    for(const side of [-1,1])
-      line([[.5,shoulder(.5)-.36,side*(halfW(.5)+.01)],
-        [o.rearOverhang+o.wheelbase-.32,shoulder(o.rearOverhang+o.wheelbase-.32)-.35,
-          side*(halfW(o.rearOverhang+o.wheelbase-.32)+.01)]],.010,M.rim);
+
+const profile = {
+  // [fraction of length from the tail, × belt height]: low bumper, rising waist, short sloping bonnet
+  belt: [[0, 0.9], [0.05, 0.99], [0.18, 1.02], [0.5, 0.99], [0.78, 0.975], [0.88, 0.94], [0.96, 0.84], [1, 0.76]],
+  corners: { rear: [0.3, 0.84], front: [0.45, 0.74] },
+  square: 5, tumble: 0.72, hips: 0.02, cPillar: 0.34, hatch: true, lamps: 'wrap', grille: 0.42,
+  details({ M, o, W, H, roofY, rearTop, bumperTop, box, panel }) {
+    // roof spoiler over the rear screen, with the high stop lamp under its lip
+    box(0.2, 0.035, W * 0.66, M.paint, o.roofFlatStart - 0.06, roofY(o.roofFlatStart - 0.06) + 0.012, 0);
+    box(0.02, 0.025, 0.3, M.tail, o.roofFlatStart - 0.16, roofY(o.roofFlatStart - 0.06) - 0.012, 0);
+    // rear wiper on the screen and a single exhaust tip
+    box(0.012, 0.012, 0.4, M.black, o.cabinRear + 0.12, rearTop + 0.22, 0.05);
+    box(0.1, 0.05, 0.08, M.chrome, -0.02, o.groundClearance + 0.12, 0.45);
+    panel(-0.009, bumperTop - 0.04, 0, 0.36, 0.012, M.chrome, { square: 10 });
   },
 };
-export function build(ctx){return buildModern(ctx,profile);}
-export default {build};
+export function build(ctx) { return buildModern(ctx, profile); }
+export default { build };

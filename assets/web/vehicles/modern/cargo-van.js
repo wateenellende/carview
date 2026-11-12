@@ -1,46 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Spacious, functional Transit / Transporter / Vito blend: square usable rear
-// volume with softened corners, tall glazing and recognizable sliding doors.
+// Panel van: a tall box with softened corners, windows only in the cab, a sliding side door, split rear doors
+// with small windows, tall upright rear lights and a high stop lamp.
 import { buildModern } from './common.js';
-const profile={
-  body:[
-    [0,1,.93],[.035,1.02,.96],[.15,1.03,1.01],
-    [.30,1.025,1.01],[.66,1.03,1.01],[.80,1.045,1.02],
-    [.93,.99,.96],[1,.92,.89],
-  ],
-  roof:[
-    [0,.03,.84],[.055,.86,.86],[.15,.99,.87],
-    [.80,1,.87],[.91,.85,.86],[1,.025,.84],
-  ],
-  backGlass:.13,frontGlass:.17,lamps:'vertical',
-  details({THREE,M,options:o,detail,line,shoulder,halfW}){
-    const y=o.height-.17;
-    // Rain gutter along tall roof and sliding side-door guides.
-    for(const side of [-1,1]){
-      const z=side*o.width*.43;
-      line([[.20,y,z],[1.1,y+.018,z],
-        [o.cabinFront-.55,y+.013,z],[o.cabinFront-.21,y-.05,z]],.020,M.black);
-      const sideZ=side*(halfW(o.cabinRear+1.0)+.017);
-      line([[o.cabinRear+.22,shoulder(o.cabinRear+.22)-.10,sideZ],
-        [o.cabinRear+.83,shoulder(o.cabinRear+.83)-.10,sideZ],
-        [o.cabinRear+1.57,shoulder(o.cabinRear+1.57)-.10,sideZ]],.012,M.black);
-      detail(new THREE.BoxGeometry(.16,.028,.026),M.rim,
-        o.cabinRear+1.30,o.beltHeight-.23,sideZ);
-    }
-    // Dual rear door centre seam / handles; cargo loading step underneath.
-    line([[-.052,o.height-.20,0],[-.057,o.height*.65,0],
-      [-.054,o.groundClearance+.30,0]],.014,M.black);
-    detail(new THREE.BoxGeometry(.04,.17,.09),M.black,
-      -.071,o.beltHeight-.38,-.06);
-    detail(new THREE.BoxGeometry(.06,.16,o.width*.80),M.black,
-      -.062,o.groundClearance+.13,0);
-    // Upright van grille and utility front bumper.
-    detail(new THREE.BoxGeometry(.051,.27,o.width*.62),M.black,
-      o.length+.030,o.beltHeight-.30,0);
-    for(let i=-2;i<=2;i++)
-      detail(new THREE.BoxGeometry(.058,.014,o.width*.57),M.rim,
-        o.length+.052,o.beltHeight-.29+i*.047,0);
+
+const profile = {
+  belt: [[0, 1.0], [0.04, 1.0], [0.6, 1.0], [0.82, 0.99], [0.9, 0.95], [0.96, 0.82], [1, 0.7]],
+  corners: { rear: [0.16, 0.92], front: [0.4, 0.8] },
+  square: 8, tumble: 0.9, cPillar: 0.06, hatch: true, lamps: 'vertical', grille: 0.6,
+  rearDrop: 0.01, panelTo: 0, split: 0,
+  details({ M, o, L, H, belt, halfW, box, panel, rearTop, rearBot }) {
+    // split line of the two rear doors, their handle and the high stop lamp
+    box(0.012, rearTop - rearBot - 0.12, 0.012, M.trim, -0.006, (rearTop + rearBot) / 2 + 0.04, 0);
+    box(0.02, 0.03, 0.16, M.chrome, -0.012, (rearTop + rearBot) / 2 + 0.05, 0.1);
+    box(0.02, 0.04, 0.3, M.tail, o.cabinRear - 0.02, H - 0.06, 0);
+    // sliding-door rail along the right flank
+    const xr = o.cabinFront - 1.1;
+    box(1.2, 0.02, 0.012, M.trim, xr - 0.6, belt(xr) - 0.04, halfW(xr) + 0.008);
   },
 };
-export function build(ctx){return buildModern(ctx,profile);}
-export default {build};
+
+// The cab is the only glazed part: panel sides from the rear pillar to just behind the front doors.
+export function build(ctx) {
+  const o = ctx.options || {};
+  return buildModern(ctx, Object.assign({}, profile, { panelTo: o.cabinFront - 1.05, split: o.cabinFront - 1.05 }));
+}
+export default { build };

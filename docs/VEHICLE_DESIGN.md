@@ -15,16 +15,23 @@ The shapes below blend cues from familiar, popular production models. These are 
 
 ## Implementation
 
-**Each Modern class has its own authored exterior profile module** in
-`assets/web/vehicles/modern/`:
-`sports-coupe.js`, `city-hatch.js`, `family-saloon.js`,
-`trail-suv.js`, `work-pickup.js` and `cargo-van.js`.
-These files are not aliases for a single shape: each defines different body
-stations, roof-line stations, rear glass depth, lamp signature and three-dimensional
-exterior details. `modern/common.js` provides only the shared smooth surface
-meshing, materials, wheels and door/lighting animation. The previous
-`model-builder/vehicle.js` remains available to older/external built-in variants,
-but the six catalogue cars no longer route through it. Per-model `vehicle.json` records define real-world dimensions in metres: length, width, height, rear overhang, wheelbase, ground clearance, wheel radius, cabin start/end and roof positions. The style recipe changes taper, wheel haunches, rocker inset, roof crown, rear shoulder and lamp signature.
+**Each Modern class has its own design module** in `assets/web/vehicles/modern/`
+(`sports-coupe.js`, `city-hatch.js`, `family-saloon.js`, `trail-suv.js`, `work-pickup.js`, `cargo-van.js`).
+They all use `modern/common.js`, which builds a car the same way as the detailed Logan model:
+
+* a smooth **lower body** lofted from a few keyed curves: the shoulder line (`belt`: boot deck, waist, bonnet),
+  the sill line, rounded corners seen from above (`corners`), squareness of the cross-section (`square`) and
+  extra width over the rear wheels (`hips`);
+* **wheel arches** shaped into the body (the underside rises in a circle around each axle), dark well liners,
+  and wheels flush with the body sides;
+* a separate **glasshouse** from the base of the rear glass (`cabinRear`) over the roof to the base of the
+  windscreen (`cabinFront`), narrowing toward the roof (`tumble`), with a body-coloured roof and pillars;
+* **rear and front faces** whose lamps (`wrap`, `bar` or `vertical`), number plate, bumpers and grille sit on
+  the body surface (never slabs bolted onto it), plus each class's own trim via `details()`.
+
+Per-model `vehicle.json` records hold the real dimensions in metres (length, width, height, overhang,
+wheelbase, wheel size, clearance, belt height and the glasshouse stations). The previous
+`model-builder/vehicle.js` remains available to older/external variants.
 
 Silhouette comes first. Front/rear fascias, wheel position, wheel-arch trim, side glass and rear detailing must remain credible in a **rear three-quarter camera**, because that is how the dashboard and Settings thumbnails usually display vehicles. Use restrained physical-material paint; avoid oversized glowing tail lamps and giant rounded surfaces.
 
