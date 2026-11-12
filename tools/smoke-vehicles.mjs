@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const web = path.join(project, 'assets/web');
@@ -12,16 +12,19 @@ const sandbox = { window: {} };
 vm.runInNewContext(read('packages.js'), sandbox);
 const vehicles = sandbox.window.CARVIEW_BUILTIN.filter((p) => p.manifest.type === 'vehicle');
 async function moduleFrom(file) {
-  return import('data:text/javascript;base64,' + Buffer.from(read(file), 'utf8').toString('base64'));
+  // Import from a file URL so per-class ES modules can import ./common.js.
+  return import(pathToFileURL(path.join(web, file)).href);
 }
 
 // Minimal three.js construction double. Checks API and object construction without WebGL.
 class Vec {
-  constructor() { this.x = 0; this.y = 0; this.z = 0; }
+  constructor(x = 0, y = 0, z = 0) { this.set(x, y, z); }
   set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; }
 }
 class Group {
-  constructor() { this.children = []; this.position = new Vec(); this.rotation = new Vec(); this.scale = new Vec(); }
+  constructor() {
+    this.children = []; this.position = new Vec(); this.rotation = new Vec(); this.scale = new Vec(1, 1, 1);
+  }
   add(...objects) { this.children.push(...objects); }
 }
 class Mesh extends Group {
@@ -37,18 +40,54 @@ class Material {
   constructor(props = {}) { this.color = { set(value) { this.value = value; } }; this.emissiveIntensity = props.emissiveIntensity || 0; }
 }
 class Geometry { constructor(...args) { this.args = args; } }
+class BufferGeometry extends Geometry {
+  constructor() { super(); this.attributes = {}; }
+  setAttribute(name, data) { this.attributes[name] = data; }
+  setIndex(data) { this.indices = data; }
+  computeVertexNormals() {}
+}
+class Float32BufferAttribute {
+  constructor(array, itemSize) { this.array = array; this.itemSize = itemSize; }
+}
 const THREE = { Group, Mesh, Shape, ExtrudeGeometry: Geometry, BoxGeometry: Geometry,
-  CylinderGeometry: Geometry, TorusGeometry: Geometry, MeshPhysicalMaterial: Material,
-  MeshStandardMaterial: Material, DoubleSide: 2 };
+  CylinderGeometry: Geometry, TorusGeometry: Geometry, CircleGeometry: Geometry, SphereGeometry: Geometry,
+  CapsuleGeometry: Geometry, TubeGeometry: Geometry, PlaneGeometry: Geometry,
+  CatmullRomCurve3: Geometry, BufferGeometry, Float32BufferAttribute,
+  MeshPhysicalMaterial: Material, MeshStandardMaterial: Material, Vector3: Vec, DoubleSide: 2 };
 
 const modern = (await moduleFrom('vehicles/model-builder/vehicle.js')).build;
 const retro = (await moduleFrom('vehicles/pixel-builder/vehicle.js')).draw;
 let checked = 0;
 for (const { manifest: m } of vehicles) {
-  if (m.entry === '../model-builder/vehicle.js') {
-    const car = modern({ THREE, colour: m.defaultColour, options: m.options });
+  if (m.entry === '../model-builder/vehicle.js' || m.entry.startsWith('../modern/')) {
+    const constructor = m.entry.startsWith('../modern/')
+      ? (await moduleFrom('vehicles/' + m.id + '/' + m.entry)).build : modern;
+    const car = constructor({ THREE, colour: m.defaultColour, options: m.options });
     if (car.length !== m.options.length || car.width !== m.options.width || !car.group.children.length)
       throw new Error(m.id + ': wrong body geometry');
+    // Body and windows must actually be curved lofts, not rectangular box placeholders.
+    const curved = car.group.children.filter((part) => part.geometry instanceof BufferGeometry);
+    if (curved.length < 8) throw new Error(m.id + ': expected curved body, window and lamp meshes');
+    if (m.options.bodyStyle === 'pickup') {
+      // The pickup bed must actually be open in the upper body mesh, not
+      // a dark plane painted over an otherwise solid slab.
+      const bodyTriangles = curved[0].geometry.indices.length / 3;
+      if (!(bodyTriangles > 0 && bodyTriangles < 72 * 40 * 2 - 100))
+        throw new Error(m.id + ': load-bed opening is covered by body skin');
+    }
+    for (const part of curved) for (const x of part.geometry.attributes.position.array)
+      if (!Number.isFinite(x)) throw new Error(m.id + ': invalid loft vertex');
+    // Closed, filled front/rear sections are essential; an uncapped body looks
+    // like a hollow tube in the studio picker (caught by browser screenshot QA).
+    const caps = curved.filter((part) => {
+      const v = part.geometry.attributes.position.array;
+      const face = part.geometry.indices || [];
+      if (face.length < 120) return false;
+      const x0 = v[0];
+      for (let i = 3; i < v.length; i += 3) if (Math.abs(v[i] - x0) > 1e-5) return false;
+      return true;
+    });
+    if (caps.length < 2) throw new Error(m.id + ': missing solid front or rear body cap');
     const expected = m.options.doors === 2 ? 3 : 5; // side doors + tailgate
     if (car.doorNames.length !== expected) throw new Error(m.id + ': incorrect door count');
     car.setColour('#ff1122');
@@ -80,4 +119,4 @@ for (const { manifest: m } of vehicles) {
   }
 }
 if (checked !== 12) throw new Error('Expected twelve configurable models, got ' + checked);
-console.log('OK: six 3D geometry models and six Retro sprites smoke-tested');
+console.log('OK: six smoothly lofted 3D bodies and six Retro sprites smoke-tested');

@@ -13,6 +13,8 @@
 <body class="theme-modern">
 <!-- the active theme draws the road, sky and vehicle in this sandboxed frame (no access to phone, apps or network) -->
 <iframe id="scene" title="scene"></iframe>
+<!-- One sandboxed off-screen renderer supplies all vehicle thumbnails; it has no Car bridge. -->
+<iframe id="previewFrame" title="Vehicle thumbnail renderer" aria-hidden="true" tabindex="-1"></iframe>
 <!-- catches taps on the vehicle (tap = next vehicle) and swipes; sits above the scene, below the panels -->
 <div id="tapLayer"></div>
 
@@ -91,9 +93,10 @@
     </div>
     <div class="s cap">Vehicle (or tap the car)</div>
     <div class="destRow"><input class="ad" id="vehicleSearch" type="search" placeholder="Search make, model, body type…" autocomplete="off" spellcheck="false" aria-label="Search vehicles"></div>
-    <div class="row wrap" id="vehicleRow"></div>
+    <div class="vehicleGrid" id="vehicleRow" aria-label="Available vehicles"></div>
     <div class="s hint" id="vehicleEmpty" hidden>No matching vehicles in this theme.</div>
     <div class="s cap">Car colour</div>
+    <div class="s hint">The selected car and its preview use the same colour; each vehicle remembers its own colour.</div>
     <div id="colours"></div>
     <div class="s cap">Destinations</div>
     <div class="s hint">Home and Work come from Google Maps. To change them, set them in Google Maps (Saved &rarr; Labelled). "Where to?" and the voice button take any place: "navigate to the station".</div>

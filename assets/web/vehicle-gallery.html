@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CarView vehicle gallery</title>
+<style>
+  * { box-sizing: border-box; }
+  body { background: #101723; color: #ecf2fc; font: 16px system-ui, sans-serif; margin: 0; padding: 24px; }
+  h1 { font-size: 26px; margin: 0 0 8px; }
+  p { color: #acbacd; margin: 0 0 22px; }
+  #gallery { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .tile { background: #233246; border: 1px solid #536784; border-radius: 12px; overflow: hidden; }
+  .tile img { width: 100%; aspect-ratio: 5 / 3; object-fit: contain; display: block;
+    background: linear-gradient(#344f6f, #1d3447); }
+  .tile div { display: flex; align-items: center; gap: 10px; padding: 12px; font-weight: 600; }
+  .chip { width: 17px; height: 17px; border: 1px solid white; border-radius: 50%; flex: none; }
+  #previewFrame { position: fixed; left: 0; top: -1000px; width: 300px; height: 180px; border: 0; }
+</style>
+<script src="packages.js"></script>
+</head>
+<body>
+<h1>CarView — rendered car catalogue</h1>
+<p>Actual vehicle modules and their default colours · rear three-quarter view · generated for visual QA</p>
+<div id="gallery"></div>
+<iframe id="previewFrame" title="Vehicle previews" sandbox="allow-scripts"></iframe>
+<script>
+  const params = new URLSearchParams(location.search);
+  const family = params.get('family') === 'pixel-16bit' ? 'pixel-16bit' : 'three-pbr';
+  // Optional colour override for automated visual regression tests.
+  const paint = /^#[0-9a-f]{6}$/i.test(params.get('paint') || '') ? params.get('paint') : null;
+  const models = window.CARVIEW_BUILTIN.filter(v => v.manifest.type === 'vehicle' && v.manifest.family === family);
+  const grid = document.getElementById('gallery');
+  const frame = document.getElementById('previewFrame');
+  let count = 0;
+  const paintFor = (v) => paint || v.manifest.defaultColour;
+  const keyFor = (v) => v.base + '|' + paintFor(v);
+  models.forEach(v => {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.dataset.previewKey = keyFor(v);
+    const image = document.createElement('img');
+    image.alt = v.manifest.name;
+    const row = document.createElement('div');
+    const chip = document.createElement('span');
+    chip.className = 'chip'; chip.style.background = paintFor(v);
+    const name = document.createElement('span');
+    name.textContent = v.manifest.name;
+    row.append(chip, name); tile.append(image, row); grid.append(tile);
+  });
+  window.addEventListener('message', e => {
+    if (e.source !== frame.contentWindow || e.data?.carviewPreview !== 1) return;
+    if (e.data.type === 'ready') {
+      frame.contentWindow.postMessage({ type: 'render', items: models.map(v => ({
+        key: keyFor(v), family, colour: paintFor(v),
+        options: v.manifest.options || {}, url: '../' + v.base + v.manifest.entry
+      })) }, '*');
+    }
+    if (e.data.type === 'image') {
+      const card = Array.from(grid.children).find(c => c.dataset.previewKey === e.data.key);
+      if (card) {
+        card.querySelector('img').src = e.data.image;
+        count++; document.body.dataset.rendered = String(count);
+      }
+    }
+    if (e.data.type === 'error') {
+      const card = Array.from(grid.children).find(c => c.dataset.previewKey === e.data.key);
+      if (card) {
+        const reason = e.data.detail || 'Preview unavailable';
+        card.title = reason;
+        card.dataset.error = reason;
+        const diagnostic = document.createElement('small');
+        diagnostic.style.cssText = 'display:block;padding:8px;color:#ffb0b0;font-size:12px';
+        diagnostic.textContent = reason;
+        card.appendChild(diagnostic);
+      }
+    }
+  });
+  if (location.protocol === 'file:') frame.removeAttribute('sandbox');
+  frame.src = 'sdk/previews.html';
+</script>
+</body>
+</html>

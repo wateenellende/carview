@@ -105,20 +105,27 @@ The specialised Logan model is for estate/crossover proportions; use the
 shared general builder for coupe, pickup, van, saloon, SUV and hatchback shapes.
 Run `node tools/check-logan.mjs` to exercise the high-detail geometry.
 
-For the additional six 3D body styles, built-in vehicle manifests reuse
-`../model-builder/vehicle.js` and specify these `options` in **metres**:
+The six built-in Modern cars now use **separate class-specific body modules**:
+`../modern/sports-coupe.js`, `city-hatch.js`, `family-saloon.js`,
+`trail-suv.js`, `work-pickup.js` and `cargo-van.js`. Each defines its own
+smooth body stations, roof/cabin stations, glass dimensions, lamp styling and
+class-specific geometry. They share the materials, wheels and animation
+contract implemented by `modern/common.js`. They still accept these
+`options` in **metres**:
 `length`, `width`, `height`, `rearOverhang`, `wheelbase`, `wheelRadius`,
 `groundClearance`, `beltHeight`, `cabinRear`, `cabinFront`,
 `roofFlatStart`, `roofFlatEnd`, `doors` (2 or 4), and `bodyStyle`
 (`hatchback`, `coupe`, `saloon`, `suv`, `pickup`, `van`).
+The older generic `model-builder/vehicle.js` remains for compatibility, but
+these six vehicles no longer use its shared silhouette.
 The rear bumper is at x=0. A detailed example and validation checklist are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For Retro, built-in model manifests can use `../pixel-builder/vehicle.js`
 with `options: { "bodyStyle": "..." }`; the Retro renderer forwards those
-options to `draw()`. **Both shared module entry paths are for the built-in
-catalogue only.** A standalone ZIP must include its own renderer file and use
-an entry relative to its own directory, without `../`.
+options to `draw()`. **All shared module entry paths are for the built-in catalogue only.** A standalone ZIP
+must bundle its class module and the required `common.js` in its own package,
+with a local `entry` (no `../` across package boundaries).
 `defaultColour` (optional) is used until the user picks a colour for this vehicle.
 
 ## 3. How a theme runs (and what it can't do)
