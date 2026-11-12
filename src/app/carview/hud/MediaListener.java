@@ -167,7 +167,11 @@ public class MediaListener extends NotificationListenerService {
             Icon icon = n.getLargeIcon();
             if (icon != null) {
                 Drawable d = icon.loadDrawable(this);
-                if (d != null) o.put("icon", dataUrl(toBitmap(d), 128, true));
+                if (d != null) {
+                    Bitmap b = toBitmap(d);
+                    o.put("icon", dataUrl(b, 128, true));
+                    keepSample(b, o);
+                }
             }
         } catch (Exception ignored) { }
         lastNav = o.toString();
@@ -175,6 +179,33 @@ public class MediaListener extends NotificationListenerService {
     }
 
     private Notification navNotification;
+    private int lastSample;
+
+    /**
+     * Keeps the last 40 different turn arrows with their text in the app's own folder on the SD card
+     * (Android/data/app.carview.hud/files/nav), so the arrow reading can be checked against what Maps really sends.
+     */
+    private void keepSample(Bitmap b, JSONObject o) {
+        try {
+            int h = (o.optString("title") + "|" + o.optString("text")).hashCode() * 31 + b.getWidth() * 7 + b.getPixel(b.getWidth() / 2, b.getHeight() / 3);
+            if (h == lastSample) return;
+            lastSample = h;
+            java.io.File dir = getExternalFilesDir("nav");
+            if (dir == null || (!dir.isDirectory() && !dir.mkdirs())) return;
+            java.io.File[] old = dir.listFiles();
+            if (old != null && old.length > 80) {
+                java.util.Arrays.sort(old, (a, c) -> Long.compare(a.lastModified(), c.lastModified()));
+                for (int i = 0; i < old.length - 80; i++) old[i].delete();
+            }
+            String name = String.valueOf(System.currentTimeMillis());
+            try (java.io.FileOutputStream f = new java.io.FileOutputStream(new java.io.File(dir, name + ".png"))) {
+                b.compress(Bitmap.CompressFormat.PNG, 100, f);
+            }
+            try (java.io.FileOutputStream f = new java.io.FileOutputStream(new java.io.File(dir, name + ".txt"))) {
+                f.write(String.join("\n", o.optString("title"), o.optString("text"), o.optString("sub"), "").getBytes("UTF-8"));
+            }
+        } catch (Exception ignored) { }
+    }
 
     /** Presses the "Exit navigation" button on Google Maps' own navigation notification. */
     static boolean stopNavigation() {
