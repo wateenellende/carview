@@ -37,6 +37,10 @@ function create(canvas) {
   let travel = 0, tSec = 0, carScale = 1, swayX = 0, swayT = 0;
   let lastBox = null;                         // vehicle box in scene pixels, for tapping
   const DROPS = Array.from({ length: 140 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: 0.6 + Math.random() * 0.8 }));
+  const LEAF_COLOURS = ['#b5562a', '#d08a2e', '#e0b23c', '#8a5a2b', '#9c3b22', '#7d8a3a'];
+  const LEAVES = Array.from({ length: 70 }, (_, i) => ({ x: Math.random() * W, y: HZ + Math.random() * (H - HZ),
+    c: LEAF_COLOURS[i % LEAF_COLOURS.length], light: 0.7 + Math.random() * 0.45, ph: Math.random() * 6.3, spin: 2 + Math.random() * 5 }));
+  let leafAmt = 0;
 
   function drawSky(mode, bearing) {
     SKIES[mode].forEach((c, i) => rect(0, i * 13, W, 13, c));
@@ -132,19 +136,48 @@ function create(canvas) {
     }
   }
 
+  // dry but windy: chunky autumn leaves tumble across the screen (rain and snow show the wind themselves)
+  function drawLeaves(mode, wx, speed, dt, drift, gust) {
+    const want = Math.max(0, Math.min(1, ((wx.cross || 0) - 15) / 35));    // fresh breeze … full swirl at 50 km/h
+    leafAmt += (want - leafAmt) * Math.min(1, dt * 0.6);
+    const n = Math.round(LEAVES.length * leafAmt);
+    const dim = mode === 'night' ? 0.45 : 1;
+    for (let i = 0; i < n; i++) {
+      const l = LEAVES[i];
+      const flutter = Math.sin(tSec * 3 * l.light + l.ph);
+      l.x += (drift * l.light + flutter * 18) * dt;
+      l.y += (Math.sin(tSec * 1.7 * l.light + l.ph) * 14 + 6 - (gust - 1) * 40 + speed * 0.3) * dt;
+      if (l.y > H - 2) l.y = H - 2;                                        // skitter along the bottom
+      if (l.x > W + 6 || l.y < HZ - 10) { l.x = -6 - Math.random() * 30; l.y = HZ + Math.random() * (H - HZ); }
+      const flip = Math.abs(Math.sin(tSec * l.spin + l.ph)) > 0.5;         // tumbling: wide, then edge-on
+      const c = dim === 1 ? l.c : shadeLeaf(l.c, dim);
+      if (flip) { rect(l.x, l.y, 4, 3, c); rect(l.x + 1, l.y - 1, 2, 1, c); } else rect(l.x + 1, l.y - 1, 2, 4, c);
+    }
+  }
+  function shadeLeaf(hex, f) {
+    const v = parseInt(hex.slice(1), 16);
+    return 'rgb(' + [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((x) => Math.round(x * f)).join(',') + ')';
+  }
+
   function drawWeather(mode, wx, speed, dt) {
     swayT += dt * (1.3 + (wx.sway || 0));
     swayX = (wx.sway || 0) * (Math.sin(swayT * 1.7) * 3 + Math.sin(swayT * 4.3) * 1.2);
-    if (!wx.kind) return;
+    // side wind in pixels per second, with gusts that come and go in step with the car's rocking
+    const gust = 1 + 0.35 * (Math.sin(swayT * 0.9) * 0.6 + Math.sin(swayT * 2.3 + 0.7) * 0.4);
+    const drift = (wx.cross || 0) * 2.2 * gust;
+    if (!wx.kind) { drawLeaves(mode, wx, speed, dt, drift, gust); return; }
+    leafAmt = 0;
     const n = Math.round(DROPS.length * wx.amount);
-    const drift = (wx.cross || 0) / 10;
     for (let i = 0; i < n; i++) {
       const d = DROPS[i];
       if (wx.kind === 'rain') {
-        d.y += (180 + speed * 2) * d.s * dt; d.x += (drift * 12 - 20) * dt;
-        rect(d.x, d.y, 1, 4 + speed / 30, mode === 'night' ? '#6f86c6' : '#b9d4ff');
+        const fall = (180 + speed * 2) * d.s, len = 4 + speed / 30;
+        d.y += fall * dt; d.x += (drift - 20) * dt;
+        const lean = Math.round((drift - 20) / fall * len);                 // streaks lean into the wind
+        const c = mode === 'night' ? '#6f86c6' : '#b9d4ff';
+        rect(d.x, d.y + len / 2, 1, len / 2, c); rect(d.x - lean, d.y, 1, len / 2, c);
       } else {
-        d.y += (28 + speed * 0.8) * d.s * dt; d.x += (Math.sin(tSec * 2 + i) * 10 + drift * 6) * dt;
+        d.y += (28 + speed * 0.8) * d.s * dt; d.x += (Math.sin(tSec * 2 + i) * 10 + drift) * dt;
         rect(d.x, d.y, 2, 2, '#f4f7ff');
       }
       if (d.y > H) { d.y = -4; d.x = Math.random() * 340 - 10; }

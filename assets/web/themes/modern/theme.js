@@ -207,16 +207,62 @@ function create(canvas, api) {
   fx.fillStyle = fg; fx.fillRect(0, 0, 32, 32);
   const snowMat = new THREE.PointsMaterial({ size: 0.2, map: new THREE.CanvasTexture(fc), transparent: true, opacity: 0, depthWrite: false });
   const snow = new THREE.Points(snowGeo, snowMat); snow.frustumCulled = false; snow.visible = false; s.add(snow);
+  // ---- dry but windy: autumn leaves tumble across the road (rain and snow show the wind themselves) ----
+  const LEAF_N = 160;
+  const leafGeo = new THREE.PlaneGeometry(0.17, 0.11);
+  const leafMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+  const leaves = new THREE.InstancedMesh(leafGeo, leafMat, LEAF_N);
+  leaves.frustumCulled = false; leaves.visible = false; s.add(leaves);
+  const LEAF_COLOURS = [0xb5562a, 0xd08a2e, 0xe0b23c, 0x8a5a2b, 0x9c3b22, 0x7d8a3a].map((c) => new THREE.Color(c));
+  const leafDummy = new THREE.Object3D();
+  const placeLeaf = (l, fromUpwind) => {
+    l.x = fromUpwind ? BOX.x0 - rnd(0, 4) : rnd(BOX.x0, BOX.x1);
+    l.y = rnd(0.05, 3.5); l.z = rnd(BOX.z0, BOX.z1 - 6);
+    l.spin = rnd(2, 7); l.ax = rnd(0, 6.3); l.ay = rnd(0, 6.3); l.ph = rnd(0, 6.3); l.light = rnd(0.7, 1.15);
+    return l;
+  };
+  const leaf = Array.from({ length: LEAF_N }, (_, i) => { leaves.setColorAt(i, LEAF_COLOURS[i % LEAF_COLOURS.length]); return placeLeaf({}, false); });
+
   const roadMat = roadMaterial;
   const SNOW_GROUND = new THREE.Color(0xd9e2ec);
-  let wet = 0, white = 0, fogK = 0, flash = 0, swayT = 0, rainAmt = 0, snowAmt = 0;
+  let wet = 0, white = 0, fogK = 0, flash = 0, swayT = 0, rainAmt = 0, snowAmt = 0, leafAmt = 0, leafT = 0;
+
+  function updateLeaves(dt, wx, v, drift, gust) {
+    // only when it is dry: from a fresh breeze (15 km/h across the road) to a full swirl at 50 km/h
+    const want = rainAmt + snowAmt < 0.1 ? Math.max(0, Math.min(1, ((wx.cross || 0) - 15) / 35)) : 0;
+    leafAmt += (want - leafAmt) * (first ? 1 : Math.min(1, dt * 0.6));
+    leaves.visible = leafAmt > 0.02;
+    if (!leaves.visible) return;
+    leafT += dt;
+    const n = Math.round(LEAF_N * leafAmt);
+    leaves.count = n;
+    for (let i = 0; i < n; i++) {
+      const l = leaf[i];
+      const flutter = Math.sin(leafT * 3 * l.light + l.ph);
+      l.x += (drift * l.light + flutter * 0.9) * dt;                       // light leaves fly almost with the wind
+      l.y += (Math.sin(leafT * 1.7 * l.light + l.ph) * 1.3 - 0.45 + (gust - 1) * 3) * dt;  // gusts lift them
+      l.y = Math.min(5, Math.max(0.03, l.y));                               // on the ground they skitter along
+      l.z += v * dt;
+      if (l.x > BOX.x1) placeLeaf(l, true);
+      else if (l.z > BOX.z1) { placeLeaf(l, false); l.z = rnd(BOX.z0, BOX.z0 + 15); }
+      const tumble = l.y > 0.05 ? leafT * l.spin : 0;                      // lying flat once it lands
+      leafDummy.position.set(l.x, l.y, l.z);
+      leafDummy.rotation.set(l.ax + tumble, l.ay + tumble * 0.7, flutter * 0.6);
+      leafDummy.updateMatrix();
+      leaves.setMatrixAt(i, leafDummy.matrix);
+    }
+    leaves.instanceMatrix.needsUpdate = true;
+  }
 
   function updateWeather(dt, st, v) {
     const wx = st.wx || {};
     const k = first ? 1 : Math.min(1, dt * 0.8);
     rainAmt += ((wx.kind === 'rain' ? wx.amount : 0) - rainAmt) * k;
     snowAmt += ((wx.kind === 'snow' ? wx.amount : 0) - snowAmt) * k;
-    const drift = (wx.cross || 0) / 3.6 * 0.35;           // side wind pushes rain and snow sideways (m/s)
+    // side wind pushes rain, snow and leaves sideways (m/s); gusts come and go in step with the car's rocking
+    const gust = 1 + 0.35 * (Math.sin(swayT * 0.9) * 0.6 + Math.sin(swayT * 2.3 + 0.7) * 0.4);
+    const drift = (wx.cross || 0) / 3.6 * 0.8 * gust;
+    updateLeaves(dt, wx, v, drift, gust);
     // rain: falls ~9 m/s, rushes toward the camera with the car's speed, streaks stretch with speed
     rain.visible = rainAmt > 0.02;
     if (rain.visible) {
@@ -229,7 +275,7 @@ function create(canvas, api) {
         if (y < 0 || z > BOX.z1) { x = rnd(BOX.x0, BOX.x1); y = rnd(BOX.y1 * 0.5, BOX.y1); z = rnd(BOX.z0, BOX.z1 - 4); }
         if (x > BOX.x1) x -= BOX.x1 - BOX.x0; else if (x < BOX.x0) x += BOX.x1 - BOX.x0;
         rainPos[o] = x; rainPos[o + 1] = y; rainPos[o + 2] = z;
-        rainPos[o + 3] = x - drift * 0.03; rainPos[o + 4] = y + len; rainPos[o + 5] = z - v * 0.02;
+        rainPos[o + 3] = x - drift * len / (9 * f); rainPos[o + 4] = y + len;   // streaks lean into the wind rainPos[o + 5] = z - v * 0.02;
       }
       rainGeo.attributes.position.needsUpdate = true;
       rainMat.opacity = 0.18 + 0.32 * rainAmt;
