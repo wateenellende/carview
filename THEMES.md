@@ -91,8 +91,8 @@ package with the same id as a built-in one overrides the built-in.
 ```
 
 `options` (optional) is passed to the vehicle code unchanged, so one vehicle file can make several cars.
-The built-in *Logan Crossover* is just the *Logan MCV* file with different options.
-The high-detail Logan MCV and Crossover continue to use `logan-mcv/vehicle.js`, but
+For example, a raised Stepway-style estate is just the *Logan MCV* file with different options.
+The high-detail Logan MCV uses `logan-mcv/vehicle.js`, but
 **their dimensions are now passed through `vehicle.json` options**:
 `length`, `width`, `rearOverhang`, `wheelbase`, `wheelRadius`,
 `roofHeight`, `roofWidth`, `rearRoofX` (rear edge of the roof),

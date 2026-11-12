@@ -110,9 +110,10 @@ function test(name, opts) {
 }
 
 const mcv = JSON.parse(read('vehicles/logan-mcv/vehicle.json')).options;
-const crossover = JSON.parse(read('vehicles/logan-crossover/vehicle.json')).options;
+// a raised, clad variant of the same file (roof rails, cladding, bigger wheels) must still build
+const raised = { ...mcv, wheelRadius: 0.335, rideHeight: 0.07, archTube: 0.06, roofRails: true, cladding: true, roofHeight: 1.545 };
 const a = test('Logan MCV', mcv);
-const b = test('Logan Crossover', crossover);
+const b = test('Raised estate with cladding', raised);
 const custom = {
   ...mcv, length: 4.72, width: 1.84, rearOverhang: 0.9, wheelbase: 2.99,
   roofHeight: 1.64, roofWidth: 0.67, rearRoofX: 0.075, windscreenX: 3.56
@@ -120,4 +121,4 @@ const custom = {
 const c = test('Custom high-roof estate', custom);
 assert(almost(a.length, 4.49) && almost(b.width, 1.73) && almost(c.length, 4.72),
   'Building another profile changed an existing model');
-console.log('OK: detailed MCV, Crossover and custom geometry profiles, doors, lights and four wheel pivots');
+console.log('OK: detailed MCV, raised and custom geometry profiles, doors, lights and four wheel pivots');

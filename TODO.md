@@ -6,7 +6,7 @@ Goal: people pick (and search for) their own kind of car, with the colour picker
 
 - [x] **General car builder and detailed Logan migration**: six body styles can be built entirely from numerical `vehicle.json` options (with matching Retro sprites). The original high-detail Logan/Stepway-style model now also reads length, width, axle positions, wheel size, windscreen and roof profile from JSON without discarding its detailed body, doors, lights or trim.
 - [x] **Clearly different built-in cars**: sports coupe, city hatchback, saloon, SUV, pickup, van (next to the
-      Logan MCV and Crossover). Also matching Retro pixel sprites.
+      Logan MCV). Also matching Retro pixel sprites.
 - [x] **Catalogue fields** in `vehicle.json`: `make`, `model`, `body`, `years`, `tags`.
 - [x] **Search box** in Settings → Vehicle (filters by name, make, model, body type, tags).
 - [x] **CONTRIBUTING.md**: how to add a car by pull request (template, licence rules, size budget, doors and lights
