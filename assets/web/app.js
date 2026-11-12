@@ -176,27 +176,40 @@ function classifyArrow(src) {
     const img = new Image();
     img.onload = () => {
       try {
-        const N = 24, c = document.createElement('canvas'); c.width = c.height = N;
+        const N = 32, c = document.createElement('canvas'); c.width = c.height = N;
         const g = c.getContext('2d'); g.drawImage(img, 0, 0, N, N);
         const px = g.getImageData(0, 0, N, N).data;
         const at = (x, y) => (y * N + x) * 4;
-        const lum = (i) => px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11;
-        const opaque = px[at(0, 0) + 3] > 200;               // arrow on a solid background: compare with the corner
-        const bg = lum(at(0, 0));
-        const w = (x, y) => { const i = at(x, y); return opaque ? Math.abs(lum(i) - bg) / 255 : px[i + 3] / 255; };
+        const lum = (i) => (px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11) / 255;
+        // Which pixels are the ARROW? Maps may send a white arrow on a transparent picture, or on a coloured tile
+        // (sometimes a rounded tile with see-through corners). Take the most common brightness among the solid
+        // pixels as the background tile; if most solid pixels differ from it by little, the solid pixels ARE the arrow.
+        const hist = new Array(16).fill(0); let solid = 0;
+        for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 128) { hist[Math.min(15, Math.floor(lum(i) * 16))]++; solid++; }
+        if (!solid) return resolve(null);
+        const bgBin = hist.indexOf(Math.max(...hist)), bg = (bgBin + 0.5) / 16;
+        let differ = 0;
+        for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 128 && Math.abs(lum(i) - bg) > 0.25) differ++;
+        const tile = differ > solid * 0.08 && hist[bgBin] > solid * 0.4;     // a tile with an arrow drawn on it
+        const isArrow = (x, y) => { const i = at(x, y); return px[i + 3] > 128 && (!tile || Math.abs(lum(i) - bg) > 0.25); };
         const centroid = (y0, y1) => {
           let s = 0, sx = 0, minX = N, maxX = -1;
-          for (let y = y0; y < y1; y++) for (let x = 0; x < N; x++) { const v = w(x, y); if (v > 0.3) { s += v; sx += v * x; minX = Math.min(minX, x); maxX = Math.max(maxX, x); } }
-          return s ? { cx: sx / s / (N - 1), spread: (maxX - minX) / (N - 1) } : null;
+          for (let y = y0; y < y1; y++) for (let x = 0; x < N; x++) if (isArrow(x, y)) { s++; sx += x; minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+          return s ? { cx: sx / s / (N - 1), spread: (maxX - minX) / (N - 1), n: s } : null;
         };
-        const top = centroid(0, Math.round(N * 0.42)), bottom = centroid(Math.round(N * 0.58), N);
+        // the arrow head is in the top part; the stem it starts from is in the bottom part
+        const top = centroid(0, Math.round(N * 0.45)), bottom = centroid(Math.round(N * 0.6), N);
         if (!top) return resolve(null);
-        const dx = top.cx - 0.5;
-        if (top.spread > 0.55 && Math.abs(dx) < 0.1 && bottom) {   // a U shape: U-turn, head on the heavier side
-          return resolve({ dir: bottom.cx < 0.5 ? -1 : 1, amount: 1, uturn: true });
+        const ref = bottom ? bottom.cx : 0.5;
+        const dx = top.cx - ref;
+        // ∩ shape (U-turn): stem AND arrow head both reach the bottom part, far apart; an ordinary turn has only its
+        // stem there. The stem runs down to the very bottom edge, the arrow head stops higher: turn toward the head.
+        if (bottom && top.spread > 0.3 && bottom.spread > 0.3) {
+          const lowest = (x0, x1) => { for (let y = N - 1; y >= 0; y--) for (let x = x0; x < x1; x++) if (isArrow(x, y)) return y; return -1; };
+          return resolve({ dir: lowest(0, N / 2) > lowest(N / 2, N) ? 1 : -1, amount: 1, uturn: true });
         }
-        if (Math.abs(dx) < 0.07) return resolve({ dir: 0, amount: 0 });
-        resolve({ dir: Math.sign(dx), amount: Math.max(0.3, Math.min(1, (Math.abs(dx) - 0.04) * 4)) });
+        if (Math.abs(dx) < 0.06) return resolve({ dir: 0, amount: 0 });
+        resolve({ dir: Math.sign(dx), amount: Math.max(0.3, Math.min(1, (Math.abs(dx) - 0.03) * 3.5)) });
       } catch (e) { resolve(null); }
     };
     img.onerror = () => resolve(null);
