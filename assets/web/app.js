@@ -622,6 +622,8 @@ function openSettings() {
   });
   refreshSpotify();
   $('settings').hidden = false;
+  startVehiclePreviews();       // first open loads the thumbnail frame; it then asks for pictures itself
+  requestVehiclePreviews();     // later opens, colour changes and searches ask for fresh pictures
 }
 
 // ------------------------------------------------------------------ weather (Open-Meteo, via Android)
