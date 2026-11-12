@@ -136,11 +136,11 @@ const TAU = Math.PI * 2;
     // less metallic + softer clearcoat: the roof stays blue instead of mirroring the sky as a silver slab
     paint: new THREE.MeshPhysicalMaterial({ color: colour, metalness: 0.2, roughness: 0.38, clearcoat: 0.7, clearcoatRoughness: 0.18, specularIntensity: 0.55, envMapIntensity: 0.45, side: THREE.DoubleSide }),
     // tinted but see-through glass (a hearse has black/covered windows; a family estate doesn't)
-    glass: new THREE.MeshPhysicalMaterial({ color: 0x3a4b5e, metalness: 0.1, roughness: 0.03, clearcoat: 1, envMapIntensity: 1.3,
-      transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide }),
+    glass: new THREE.MeshPhysicalMaterial({ color: 0x3a4b5e, metalness: 0.1, roughness: 0.03, clearcoat: 1, envMapIntensity: 0.55,
+      transparent: true, opacity: 0.82, depthWrite: false, side: THREE.DoubleSide }),
     // the roof faces the bright sky/studio light: same blue, but far less mirror so it doesn't read as a silver top
     roof: new THREE.MeshPhysicalMaterial({ color: colour, metalness: 0.1, roughness: 0.55, clearcoat: 0, specularIntensity: 0.2, envMapIntensity: 0.2, side: THREE.DoubleSide }),
-    headliner: new THREE.MeshStandardMaterial({ color: 0x4a4f58, roughness: 0.95, side: THREE.DoubleSide }),
+    headliner: new THREE.MeshStandardMaterial({ color: 0x33373e, roughness: 0.95, side: THREE.DoubleSide }),
     seat: new THREE.MeshStandardMaterial({ color: 0x2c2f36, roughness: 0.85 }),
     plastic: new THREE.MeshStandardMaterial({ color: 0x17191e, roughness: 0.75, side: THREE.DoubleSide }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xdfe5ee, metalness: 1, roughness: 0.15, side: THREE.DoubleSide }),
@@ -199,9 +199,10 @@ const TAU = Math.PI * 2;
   tailL.push(patch(bodySurf, 0.0, 0.12, Math.PI - 0.75, Math.PI - 0.35, 6, 8, 0.006, M.tail), patch(glassSurf, 0.035, 0.1, 0.88, 1.0, 4, 8, 0.012, M.tail));
   tailL.concat(tailR).forEach((m) => car.add(m));
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.12), M.plate);
-  plate.position.set(-0.012, 0.62, 0); plate.rotation.y = -Math.PI / 2;
-  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.035, 0.6), M.chrome);
-  handle.position.set(-0.012, 0.76, 0);
+  plate.position.set(-0.022, 0.64, 0); plate.rotation.y = -Math.PI / 2;
+  // chrome strip across the tailgate above the plate (with the badge in the middle), like the real MCV
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.03, 0.78), M.chrome);
+  handle.position.set(-0.024, 0.79, 0);
 
   // ---- tailgate: rear glass + rear panel, hinged at the back of the roof ----
   const hingeT = new THREE.Vector3(G0, roofY(G0) + 0.01, 0);
@@ -214,9 +215,10 @@ const TAU = Math.PI * 2;
   sp.moveTo(-hw0 + rr, y0); sp.lineTo(hw0 - rr, y0); sp.quadraticCurveTo(hw0, y0, hw0, y0 + rr);
   sp.lineTo(hw0, y1 - rr); sp.quadraticCurveTo(hw0, y1, hw0 - rr, y1); sp.lineTo(-hw0 + rr, y1);
   sp.quadraticCurveTo(-hw0, y1, -hw0, y1 - rr); sp.lineTo(-hw0, y0 + rr); sp.quadraticCurveTo(-hw0, y0, -hw0 + rr, y0);
-  const panelG = new THREE.ExtrudeGeometry(sp, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 3 });
+  // a thin skin flush with the body (it used to be a 6 cm slab that buried the plate, handle and badge)
+  const panelG = new THREE.ExtrudeGeometry(sp, { depth: 0.006, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.01, bevelSegments: 2 });
   const panel = new THREE.Mesh(panelG, M.paint);
-  panel.rotation.y = -Math.PI / 2; panel.position.x = -0.008;
+  panel.rotation.y = -Math.PI / 2; panel.position.x = 0.002;
   tg.add(panel, plate, handle);
   // Rear-window wiper, high-mounted stop lamp and a raised chrome badge: visible in the driving view.
   const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.48), M.plastic);
@@ -224,7 +226,17 @@ const TAU = Math.PI * 2;
   const thirdLamp = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.045, 0.34), M.tail);
   thirdLamp.position.set(-0.023, 1.435, 0); tg.add(thirdLamp);
   const badge = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.032, 0.22), M.chrome);
-  badge.position.set(-0.031, 0.85, 0); tg.add(badge);
+  badge.position.set(-0.03, 0.79, 0); badge.scale.set(1, 1.6, 0.5); tg.add(badge);
+  // tall rear light clusters on the tailgate corners, wrapping into the body-side lamps
+  for (const side of [-1, 1]) {
+    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.3, 0.15), M.tail);
+    lens.position.set(-0.016, 0.86, side * (halfW(0) - 0.12)); tg.add(lens);
+    const inner = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.07, 0.11), M.chrome);
+    inner.position.set(-0.02, 0.8, side * (halfW(0) - 0.12)); tg.add(inner);   // reversing-lamp section
+  }
+  // dark lower bumper across the rear
+  const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.13, halfW(0) * 1.9), M.plastic);
+  bumper.position.set(-0.008, 0.4, 0); car.add(bumper);
   tg.position.sub(hingeT);
   tgPivot.add(tg);
   car.add(tgPivot);
