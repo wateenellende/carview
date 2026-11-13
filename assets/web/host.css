@@ -11,6 +11,22 @@
 body.theme-retro #topFade { height: 9vh; border-top: 0;
   background: linear-gradient(#1a1b20 0 25%, rgba(26, 27, 32, .7) 25% 50%, rgba(26, 27, 32, .4) 50% 75%, rgba(26, 27, 32, .15) 75% 100%); }
 [hidden] { display: none !important; }
+/* music source switch (Spotify | Radio) at the top of the music card; themes may restyle it */
+.srcSwitch { display: inline-flex; gap: 0; border-radius: 999px; padding: .35vh; background: rgba(255, 255, 255, .08); margin-bottom: 1.2vh; }
+.srcSwitch .src { padding: .7vh 1.8vh; border-radius: 999px; font-size: 1.7vh; letter-spacing: .08em; text-transform: uppercase; opacity: .6; cursor: pointer; }
+.srcSwitch .src.on { background: rgba(255, 255, 255, .2); opacity: 1; font-weight: 600; }
+/* radio mode: the album-art square becomes a tuning display */
+#right.radio #art { display: flex; align-items: center; justify-content: center; flex-direction: column;
+  background: linear-gradient(135deg, #1d3557, #0b1220) !important; }
+#right.radio #art .freq { font-size: 4.2vh; font-weight: 300; letter-spacing: .02em; line-height: 1; }
+#right.radio #art .band { font-size: 1.5vh; opacity: .7; letter-spacing: .2em; margin-top: .6vh; }
+#right.radio #bar { visibility: hidden; }
+body.theme-retro .srcSwitch { border-radius: 0; background: transparent; outline: 2px solid currentColor; padding: 0; }
+body.theme-retro .srcSwitch .src { border-radius: 0; font-family: 'Pixel', monospace; }
+body.theme-retro .srcSwitch .src.on { background: var(--ink, #ffd37a); color: var(--navy, #1b1d3a); }
+body.theme-retro #right.radio #art { background: #1b1d3a !important; }
+body.theme-retro #right.radio #art .freq { font-family: 'Pixel', monospace; font-size: 2.4vh; }
+body.theme-retro #right.radio #art .band { font-size: 1vh; letter-spacing: .05em; }
 .row.wrap { flex-wrap: wrap; }
 .pkg { display: flex; align-items: center; justify-content: space-between; gap: 1.2vh; margin-top: 1vh; }
 .pkg .s { flex: 1; min-width: 0; }

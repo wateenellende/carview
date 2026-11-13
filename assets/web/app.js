@@ -393,9 +393,14 @@ function voiceCommand(said) {
   if (/^(?:stop|end|cancel|exit) (?:navigation|navigating|route|the route)$|^stop navigeren$/.test(t)) return stopNav();
   m = t.match(/^(?:call|phone|ring|dial|bel|bellen)\s+(?:to\s+|naar\s+)?(.+)$/);
   if (m) return callByVoice(raw.replace(/^\s*(?:hey google|ok google|okay google|please)[, ]*/i, '').replace(/^\S+\s+(?:to\s+|naar\s+)?/i, '').replace(/[.!?]+$/, ''));
+  // music source: "radio", "play the radio", "switch to the radio", "zet de radio aan", "Spotify", "back to Spotify"
+  if (/^(?:(?:play|put on|turn on|switch to|listen to|open|start)\s+(?:the\s+)?radio|radio(?:\s+(?:on|please))?|(?:zet\s+)?de radio(?:\s+aan)?|radio aan|naar de radio|luister naar de radio)$/.test(t)) return setMusicSource('radio');
+  if (/^(?:(?:play|put on|turn on|switch to|back to|open|start)\s+)?spotify(?:\s+(?:on|aan|please))?$|^(?:zet\s+)?spotify(?:\s+aan)?$|^terug naar spotify$/.test(t)) return setMusicSource('spotify');
+  if (/^(?:next|another) (?:station|channel)$|^volgende (?:zender|station)$|^andere zender$/.test(t)) { toast('Next station'); return call('next'); }
+  if (/^previous (?:station|channel)$|^vorige (?:zender|station)$/.test(t)) { toast('Previous station'); return call('prev'); }
   // music controls
-  if (/^(?:next|skip|next song|next track|volgende|volgend nummer)$/.test(t)) { toast('Next song'); return call('next'); }
-  if (/^(?:previous|back|previous song|vorige|vorig nummer)$/.test(t)) { toast('Previous song'); return call('prev'); }
+  if (/^(?:next|skip|next song|next track|volgende|volgend nummer)$/.test(t)) { toast(musicSource() === 'radio' ? 'Next station' : 'Next song'); return call('next'); }
+  if (/^(?:previous|back|previous song|vorige|vorig nummer)$/.test(t)) { toast(musicSource() === 'radio' ? 'Previous station' : 'Previous song'); return call('prev'); }
   if (/^(?:pause|stop|stop the music|stop music|pauze|stop muziek)$/.test(t)) { toast('Paused'); return call('pause'); }
   if (/^(?:play|resume|continue|play music|speel|verder|muziek)$/.test(t)) { toast('Playing'); return call('play'); }
   // navigation: "navigate to X", "take me home", "drive to X", "directions to X", "rijd naar X", "navigeer naar X"
@@ -404,7 +409,10 @@ function voiceCommand(said) {
   if (HOME_WORDS.test(t) || t === 'go home') return goHome();
   // music: "play X", "play X on Spotify", "put on X", "speel X", "zet X op"
   m = t.match(/^(?:play|put on|listen to|speel|zet)\s+(?:some\s+|iets van\s+|wat\s+)?(.+?)(?:\s+(?:on|op)\s+spotify)?(?:\s+(?:af|op))?$/);
-  if (m) { toast('Searching Spotify for ' + m[1] + ' (tap to play)'); return call('playSearch', m[1]); }
+  if (m) {
+    if (musicSource() === 'radio') { setMusicSource('spotify', true); call('musicSourceQuiet', 'spotify'); }   // a song: Spotify again
+    toast('Searching Spotify for ' + m[1] + ' (tap to play)'); return call('playSearch', m[1]);
+  }
   // anything else: ordinary Google search
   toast('Searching Google'); call('webSearch', raw);
 }
@@ -423,10 +431,53 @@ function renderNav() {
   $('turnArrow').hidden = !!n.icon;
 }
 
+// ------------------------------------------------------------------ music source: Spotify or the car's radio
+const musicSource = () => (cfg.musicSource === 'radio' ? 'radio' : 'spotify');
+function setMusicSource(src, quiet) {
+  cfg.musicSource = src === 'radio' ? 'radio' : 'spotify'; saveCfg();
+  if (!quiet) { toast(cfg.musicSource === 'radio' ? 'Radio' : 'Spotify'); call('musicSource', cfg.musicSource); }
+  renderMedia();
+}
+/** What is the radio playing? From its media session if it has one, else from the firmware's radio broadcasts. */
+function radioInfo() {
+  const m = car.media || {};
+  if (m.app === 'com.tw.radio' && (m.title || m.artist)) return { name: m.title || '', text: m.artist || '', freq: '', band: '' };
+  const r = car.radio || {}, pick = (re) => { const k = Object.keys(r).find((x) => re.test(x) && r[x] !== '' && r[x] != null); return k ? String(r[k]) : ''; };
+  const band = pick(/band/i).toUpperCase().replace(/^0$/, 'FM').replace(/^1$/, 'AM');
+  let freq = pick(/freq/i);
+  const n = parseFloat(freq);
+  if (Number.isFinite(n)) {
+    if (/AM|MW|LW/.test(band) || (n >= 150 && n < 1800)) freq = Math.round(n) + '';
+    else freq = (n >= 8750 ? n / 100 : n >= 875 ? n / 10 : n).toFixed(1);
+  }
+  return { name: pick(/^(?:ps|psname|name|station|stationname|title)$/i), text: pick(/^(?:rt|radiotext|text|info)$/i),
+    freq, band: band || (freq ? (/AM/.test(band) ? 'AM' : 'FM') : '') };
+}
+
 function renderMedia() {
   const m = car.media || {};
+  const radio = musicSource() === 'radio';
+  document.querySelectorAll('#srcSwitch .src').forEach((s) => {
+    s.classList.toggle('on', s.dataset.src === musicSource()); s.setAttribute('aria-selected', String(s.dataset.src === musicSource()));
+  });
+  $('right').classList.toggle('radio', radio);
+  $('search').textContent = radio ? 'Tuner' : 'Search';
+  $('spotify').textContent = radio ? 'Spotify' : 'Spotify';
+  if (radio) {
+    const r = radioInfo(), unit = r.band === 'AM' ? 'kHz' : 'MHz';
+    $('title').textContent = r.name || (r.freq ? r.freq + ' ' + unit : 'Radio');
+    $('artist').textContent = r.text || (r.freq ? (r.band || 'FM') + ' radio' : 'Tap ▶▶ to find a station');
+    document.body.classList.remove('hasArt');
+    $('art').style.backgroundImage = '';
+    $('art').innerHTML = '<span class="freq"></span><span class="band"></span>';
+    $('art').querySelector('.freq').textContent = r.freq || '📻';
+    $('art').querySelector('.band').textContent = r.freq ? (r.band || 'FM') + ' · ' + unit : 'RADIO';
+    $('play').innerHTML = m.app === 'com.tw.radio' && m.playing === false ? '&#9654;' : '&#10074;&#10074;';
+    $('musicHint').hidden = true;
+    return;
+  }
+  $('art').innerHTML = '';
   const has = !!(m.title || m.artist);
-  $('musicApp').textContent = m.app && m.app !== 'com.spotify.music' ? 'Music' : 'Spotify';
   $('title').textContent = has ? m.title : 'Nothing playing';
   $('artist').textContent = has ? (m.artist || '') : 'Tap play or say Hey Google';
   document.body.classList.toggle('hasArt', !!m.art);
@@ -463,6 +514,7 @@ window.onCar = function (type, d) {
     case 'door': car.doors.frontLeft = !!d; break;                     // driver door only
     case 'doors': Object.keys(car.doors).forEach((k) => { if (d && k in d) car.doors[k] = !!d[k]; }); break;
     case 'media': car.media = d || {}; car.mediaAt = performance.now(); renderMedia(); break;
+    case 'radio': car.radio = Object.assign(car.radio || {}, d || {}); if (musicSource() === 'radio') renderMedia(); break;
     case 'nav': car.nav = d; updateNavTurn(d); renderNav(); break;
     case 'access':
       car.access = d || {};
@@ -493,8 +545,14 @@ document.querySelectorAll('#dests .tile').forEach((t) => {
 tap('play', () => { call('playPause'); });
 tap('next', () => call('next'));
 tap('prev', () => call('prev'));
-tap('search', () => { toast('Search only when parked'); call('spotifySearch'); });
-tap('spotify', () => call('spotify'));
+tap('search', () => {
+  if (musicSource() === 'radio') return call('radioApp');
+  toast('Search only when parked'); call('spotifySearch');
+});
+tap('spotify', () => (musicSource() === 'radio' ? setMusicSource('spotify') : call('spotify')));
+document.querySelectorAll('#srcSwitch .src').forEach((s) => s.addEventListener('click', (e) => {
+  e.stopPropagation(); if (s.dataset.src !== musicSource()) setMusicSource(s.dataset.src);
+}));
 tap('musicHint', () => call('mediaAccess'));
 tap('mapBtn', () => call('maps'));
 tap('splitBtn', () => call('mapsSplit'));
@@ -878,6 +936,8 @@ renderDests();
 if (Native) {
   applyTheme();
   call('ready');
+  call('musicSourceQuiet', musicSource());          // which source the card controls (no app is opened for this)
+  renderMedia();
 } else {
   // Demo mode for previewing in a desktop browser: ?scene=cruise|nav|night|open|day&theme=modern|retro
   const q = new URLSearchParams(location.search);
@@ -899,6 +959,7 @@ if (Native) {
   if (scene === 'oncall') onCar('call', { state: 'active', dir: 'in', name: 'Alex' });
   onCar('access', { location: true, media: true });
   onCar('media', { app: 'com.spotify.music', title: 'Night Drive', artist: 'Demo Artist', playing: true, position: 61000, duration: 168000, speed: 1, updated: 0, now: 0 });
+  if (q.get('music') === 'radio') { cfg.musicSource = 'radio'; onCar('radio', { action: 'com.tw.radio.state', freq: '10170', band: 'FM', ps: q.get('station') || '' }); }
   if (scene === 'nav') onCar('nav', { title: '300 m', text: 'Stationsweg', sub: 'Arrive 10:52 · 14 km' });
   // road bends: ?scene=turnleft|turnright (navigation, &dist=60 freezes the distance) or ?scene=corner (GPS turn)
   if (scene === 'turnleft' || scene === 'turnright') {

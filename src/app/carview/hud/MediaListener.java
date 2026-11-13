@@ -31,6 +31,10 @@ import java.util.List;
  */
 public class MediaListener extends NotificationListenerService {
     static final String SPOTIFY = "com.spotify.music";
+    static final String RADIO = "com.tw.radio";
+    /** Which source the music card shows and controls: "spotify" or "radio" (chosen on the dashboard). */
+    static volatile String source = "spotify";
+    static void setSource(String s) { source = s; MediaListener l = inst; if (l != null) l.pickController(); }
     static final String MAPS = "com.google.android.apps.maps";
 
     static volatile MediaListener inst;
@@ -84,7 +88,12 @@ public class MediaListener extends NotificationListenerService {
     private void pickController(List<MediaController> list) {
         MediaController best = null;
         if (list != null) {
-            for (MediaController c : list) if (SPOTIFY.equals(c.getPackageName())) { best = c; break; }
+            String want = "radio".equals(source) ? RADIO : SPOTIFY;
+            for (MediaController c : list) if (want.equals(c.getPackageName())) { best = c; break; }
+            if (best == null && "radio".equals(source)) {      // radio without its own media session: show nothing else
+                if (ctrl != null) ctrl.unregisterCallback(cb);
+                ctrl = null; pushMedia(); return;
+            }
             if (best == null && !list.isEmpty()) best = list.get(0);
         }
         if (ctrl != null) ctrl.unregisterCallback(cb);
@@ -127,15 +136,29 @@ public class MediaListener extends NotificationListenerService {
     }
 
     // ---- transport controls, called from the dashboard ----
+    /** The car's radio may not have a media session: then send it the media keys (the steering-wheel buttons). */
+    private static boolean radioKeys(int code) {
+        MediaListener l = inst;
+        if (!"radio".equals(source) || l == null || (l.ctrl != null && RADIO.equals(l.ctrl.getPackageName()))) return false;
+        try {
+            android.media.AudioManager am = (android.media.AudioManager) l.getSystemService(AUDIO_SERVICE);
+            long t = android.os.SystemClock.uptimeMillis();
+            am.dispatchMediaKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, code, 0));
+            am.dispatchMediaKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, code, 0));
+        } catch (Exception ignored) { }
+        return true;
+    }
+
     static void playPause() {
+        if (radioKeys(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)) return;
         MediaListener l = inst;
         if (l == null || l.ctrl == null) return;
         PlaybackState s = l.ctrl.getPlaybackState();
         if (s != null && s.getState() == PlaybackState.STATE_PLAYING) l.ctrl.getTransportControls().pause();
         else l.ctrl.getTransportControls().play();
     }
-    static void next() { MediaListener l = inst; if (l != null && l.ctrl != null) l.ctrl.getTransportControls().skipToNext(); }
-    static void prev() { MediaListener l = inst; if (l != null && l.ctrl != null) l.ctrl.getTransportControls().skipToPrevious(); }
+    static void next() { if (radioKeys(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)) return; MediaListener l = inst; if (l != null && l.ctrl != null) l.ctrl.getTransportControls().skipToNext(); }
+    static void prev() { if (radioKeys(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)) return; MediaListener l = inst; if (l != null && l.ctrl != null) l.ctrl.getTransportControls().skipToPrevious(); }
     static void pause() { MediaListener l = inst; if (l != null && l.ctrl != null) l.ctrl.getTransportControls().pause(); }
     static void play() { MediaListener l = inst; if (l != null && l.ctrl != null) l.ctrl.getTransportControls().play(); }
 

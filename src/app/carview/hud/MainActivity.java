@@ -131,6 +131,11 @@ public class MainActivity extends Activity {
         for (String a : CALL_STATES) cf.addAction(a);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(callRx, cf, Context.RECEIVER_EXPORTED);
         else registerReceiver(callRx, cf);
+        // the car's own radio app tells the firmware what it is tuned to with these broadcasts
+        IntentFilter rf = new IntentFilter();
+        for (String a : RADIO_STATES) rf.addAction(a);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(radioRx, rf, Context.RECEIVER_EXPORTED);
+        else registerReceiver(radioRx, rf);
         IntentFilter pf = new IntentFilter(CONTACTS_SYNCED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(contactsRx, pf, Context.RECEIVER_EXPORTED);
         else registerReceiver(contactsRx, pf);
@@ -179,6 +184,7 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(lightsRx); } catch (Exception ignored) { }
         try { unregisterReceiver(callRx); } catch (Exception ignored) { }
         try { unregisterReceiver(contactsRx); } catch (Exception ignored) { }
+        try { unregisterReceiver(radioRx); } catch (Exception ignored) { }
         if (lm != null) {
             try { lm.removeUpdates(locL); } catch (Exception ignored) { }
             try { lm.unregisterGnssStatusCallback(gnss); } catch (Exception ignored) { }
@@ -351,6 +357,44 @@ public class MainActivity extends Activity {
     static final String CONTACTS_SYNCED = "com.aispeech.action.CONTACTS_SYNC_SUCCESS";
     static final String CONTACTS_REQUEST = "com.unisound.intent.action.GET_CONTACTS";
     static final String CALL_DIAL = "action.intent.AIOS_DIAL";
+
+    // ---------------- the car's own FM/AM radio (com.tw.radio) ----------------
+    static final String[] RADIO_STATES = { "com.tw.radio.state", "com.tw.radio.av" };
+    private int radioLogLines;
+    /** Forwards everything the radio broadcasts to the dashboard (it picks out frequency / station name), and keeps
+     *  the first 300 of them in Android/data/app.carview.hud/files/radio.log so the format can be checked. */
+    private final BroadcastReceiver radioRx = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            JSONObject o = new JSONObject();
+            try {
+                o.put("action", i.getAction());
+                Bundle b = i.getExtras();
+                if (b != null) for (String k : b.keySet()) { Object v = b.get(k); o.put(k, v == null ? JSONObject.NULL : String.valueOf(v)); }
+            } catch (Exception ignored) { }
+            send("radio", o.toString());
+            if (radioLogLines++ < 300) {
+                try {
+                    java.io.File dir = getExternalFilesDir(null);
+                    if (dir != null) try (java.io.FileWriter w = new java.io.FileWriter(new java.io.File(dir, "radio.log"), true)) {
+                        w.write(System.currentTimeMillis() + " " + o + "\n");
+                    }
+                } catch (Exception ignored) { }
+            }
+        }
+    };
+
+    /** Music source for the card on the right: "radio" starts the car's radio (and comes back), "spotify" plays Spotify. */
+    private void musicSource(String src) {
+        MediaListener.setSource(src);
+        if ("radio".equals(src)) {
+            Intent i = getPackageManager().getLaunchIntentForPackage(MediaListener.RADIO);
+            if (i == null) { send("toast", JSONObject.quote("No radio app found")); return; }
+            start(i);
+            h.postDelayed(this::backToFront, 1800);          // the radio plays on; CarView comes back to the front
+        } else {
+            MediaListener.play();
+        }
+    }
 
     private final BroadcastReceiver contactsRx = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
@@ -673,6 +717,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void next(String token) { if (!ok(token)) return; h.post(MediaListener::next); }
         @JavascriptInterface public void prev(String token) { if (!ok(token)) return; h.post(MediaListener::prev); }
         @JavascriptInterface public void spotify(String token) { if (!ok(token)) return; h.post(() -> open(MediaListener.SPOTIFY)); }
+        @JavascriptInterface public void musicSource(String token, String src) { if (!ok(token)) return; h.post(() -> MainActivity.this.musicSource("radio".equals(src) ? "radio" : "spotify")); }
+        @JavascriptInterface public void musicSourceQuiet(String token, String src) { if (!ok(token)) return; h.post(() -> MediaListener.setSource("radio".equals(src) ? "radio" : "spotify")); }
+        @JavascriptInterface public void radioApp(String token) { if (!ok(token)) return; h.post(() -> open(MediaListener.RADIO)); }
         @JavascriptInterface public void spotifySearch(String token) { if (!ok(token)) return;
             h.post(() -> {
                 Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search"));

@@ -59,7 +59,10 @@
 </div>
 
 <div id="right" class="px glass">
-  <div class="s cap" id="musicApp">Spotify</div>
+  <!-- music source: Spotify or the car's own FM/AM radio (tap, or say "radio" / "Spotify") -->
+  <div class="srcSwitch" id="srcSwitch" role="tablist" aria-label="Music source">
+    <span class="src" data-src="spotify" role="tab">Spotify</span><span class="src" data-src="radio" role="tab">Radio</span>
+  </div>
   <div class="musicRow">
     <div id="art"></div>
     <div class="meta"><div id="title" class="t">Nothing playing</div><div id="artist" class="s"></div></div>
