@@ -38,7 +38,7 @@ function create(canvas) {
   let lastBox = null;                         // vehicle box in scene pixels, for tapping
   const DROPS = Array.from({ length: 140 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: 0.6 + Math.random() * 0.8 }));
   const LEAF_COLOURS = ['#b5562a', '#d08a2e', '#e0b23c', '#8a5a2b', '#9c3b22', '#7d8a3a'];
-  const LEAVES = Array.from({ length: 70 }, (_, i) => ({ x: Math.random() * W, y: HZ + Math.random() * (H - HZ),
+  const LEAVES = Array.from({ length: 60 }, (_, i) => ({ x: Math.random() * W, gy: HZ + 4 + Math.random() * (H - HZ - 4), h: 0, vh: 0,
     c: LEAF_COLOURS[i % LEAF_COLOURS.length], light: 0.7 + Math.random() * 0.45, ph: Math.random() * 6.3, spin: 2 + Math.random() * 5 }));
   let leafAmt = 0;
 
@@ -83,7 +83,10 @@ function create(canvas) {
     const kNow = st.steer != null ? Math.tan(st.steer * Math.PI / 180) / 2.6
       : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
     bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * kb;
-    const nav = st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
+    // a roundabout replaces the bend / side road: drawn as a ring with its roads (see drawRoad)
+    const rbNav = st.nav && st.nav.roundabout && st.nav.distance != null ? st.nav : null;
+    rbDraw = rbNav && rbNav.distance < 450 ? { at: Math.max(0, rbNav.distance) * 0.25, shape: rbNav.roundabout } : null;
+    const nav = !rbDraw && st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
     const near = nav ? Math.min(1, Math.max(0, (450 - nav.distance) / 80)) : 0;   // drawn at 40% distance: visible from ~450 m
     bend.amount += ((nav ? nav.amount * near : 0) - bend.amount) * kb;
     // the flat pixel road squeezes everything past ~30 m into a few rows: show the fork closer than it really is
@@ -111,6 +114,9 @@ function create(canvas) {
       BXS[i] = BXS[i - 1] + Math.tan(Math.max(-1.2, Math.min(1.2, h))) * STEP;
     }
   }
+  // roundabout (when Maps announces one): ring of RB_R (centre line) +- RB_HW, entry at rbDraw.at metres ahead
+  let rbDraw = null;
+  const RB_R = 6.5, RB_HW = 3, RB_OUT = RB_R + RB_HW, RB_IN = RB_R - RB_HW;   // small: the flat road squeezes depth
   const sample = (arr, sAt) => { const f = Math.max(0, Math.min(arr.length - 1.001, sAt / STEP)), i = Math.floor(f); return arr[i] + (arr[i + 1] - arr[i]) * (f - i); };
 
   function drawRoad(mode) {
@@ -128,30 +134,89 @@ function create(canvas) {
         rect(bx - bh, y, bh * 2, 1, road[seg]);
         if (seg) rect(bx - 0.5 - p * 2, y, 1 + p * 4, 1, mode === 'night' ? '#cfc8b4' : '#fff8e7');
       }
+      if (rbDraw && z > rbDraw.at + 0.5) { drawRoundaboutRow(y, z, pxPerM, seg, road, grass, mode); continue; }
       rect(cx - half, y, half * 2, 1, road[seg]);
       const kerb = 1 + p * 14, kc = seg ? '#e8e2d0' : '#d6303b';
       rect(cx - half - kerb, y, kerb, 1, kc);
       rect(cx + half, y, kerb, 1, kc);
       if (seg) rect(cx - 0.5 - p * 2, y, 1 + p * 4, 1, mode === 'night' ? '#cfc8b4' : '#fff8e7');
+      if (rbDraw) rect(cx + 1.9 * pxPerM - 0.35 * pxPerM, y, Math.max(1, 0.7 * pxPerM), 1, ROUTE);   // route to the ring
+    }
+  }
+  const ROUTE = '#4aa8ff';
+  // one screen row of the roundabout: its roads, the ring, the island and the route line (angles: 0 = straight on,
+  // 90 = right, -90 = left, 180 = where we come from; anticlockwise round the ring, so the 1st exit is on the right)
+  function drawRoundaboutRow(y, z, pxPerM, seg, road, grass, mode) {
+    const zc = rbDraw.at + RB_OUT, dz = z - zc, xc = W / 2 + Math.max(-900, Math.min(900, sample(MX, rbDraw.at) * pxPerM));
+    const X = (m) => xc + m * pxPerM, sh = rbDraw.shape, exitA = sh.angle * Math.PI / 180;
+    // the other roads, out from the ring
+    for (const deg of sh.arms) {
+      const a = deg * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+      if (Math.abs(ca) < 0.2) {                                         // to the side: a band across these rows
+        if (Math.abs(dz) < 4.5) { if (sa > 0) rect(X(0), y, W, 1, road[seg]); else rect(0, y, X(0), 1, road[seg]); }
+        continue;
+      }
+      const t = dz / ca;                                                  // how far along this road the row is
+      if (t > RB_R) { const hw = 4.5 / Math.abs(ca); rect(X(t * sa - hw), y, 2 * hw * pxPerM, 1, road[seg]); }
+    }
+    // the ring and the island
+    if (Math.abs(dz) <= RB_OUT) {
+      const co = Math.sqrt(RB_OUT * RB_OUT - dz * dz);
+      rect(X(-co), y, 2 * co * pxPerM, 1, road[seg]);
+      if (Math.abs(dz) < RB_IN) {
+        const ci = Math.sqrt(RB_IN * RB_IN - dz * dz), kerb = Math.max(1, 0.4 * pxPerM);
+        rect(X(-ci) - kerb, y, 2 * ci * pxPerM + 2 * kerb, 1, seg ? '#e8e2d0' : '#d6303b');
+        rect(X(-ci), y, 2 * ci * pxPerM, 1, grass[seg ^ 1]);
+      }
+    }
+    // route: round the ring from where we enter (180) down to the exit angle, then out along the exit road
+    const lane = Math.max(1, 0.8 * pxPerM);
+    if (Math.abs(dz) <= RB_R) {
+      const c = Math.sqrt(RB_R * RB_R - dz * dz);
+      for (const xm of [-c, c]) {
+        const phi = Math.atan2(xm, dz);
+        if (phi >= exitA - 0.05 || phi <= -Math.PI + 0.05 && exitA <= -Math.PI + 0.1) rect(X(xm) - lane / 2, y, lane, 1, ROUTE);
+      }
+    }
+    const ca = Math.cos(exitA), sa = Math.sin(exitA);
+    if (Math.abs(ca) < 0.2) {
+      if (Math.abs(dz - (-1.9 * sa)) < 0.7) { if (sa > 0) rect(X(RB_OUT), y, W, 1, ROUTE); else rect(0, y, X(-RB_OUT), 1, ROUTE); }
+    } else {
+      const t = dz / ca;
+      if (t > RB_OUT) rect(X(t * sa + 1.9 * ca) - lane / 2, y, lane, 1, ROUTE);
     }
   }
 
   // dry but windy: chunky autumn leaves tumble across the screen (rain and snow show the wind themselves)
-  function drawLeaves(mode, wx, speed, dt, drift, gust) {
-    const want = Math.max(0, Math.min(1, ((wx.cross || 0) - 15) / 35));    // fresh breeze … full swirl at 50 km/h
-    leafAmt += (want - leafAmt) * Math.min(1, dt * 0.6);
-    const n = Math.round(LEAVES.length * leafAmt);
+  // Calm: none. Breeze: a few leaves skittering low. Gale: many, lifted high. They blow the way the wind blows
+  // relative to the car (wx.side: + = to the right; wx.along: + = forward). Each leaf has a spot on the ground
+  // (gy: a screen row, i.e. a depth) and a height above it, both scaled by perspective.
+  function drawLeaves(mode, wx, speed, dt, gust) {
+    const want = Math.max(0, Math.min(1, ((wx.wind || 0) - 8) / 45));
+    leafAmt += (want - leafAmt) * Math.min(1, dt * 0.5);
+    if (leafAmt < 0.01) return;
+    const n = Math.max(1, Math.round(LEAVES.length * Math.pow(leafAmt, 1.4)));
+    const ceiling = 4 + 46 * Math.pow(leafAmt, 1.3);                    // pixels at the front of the screen
     const dim = mode === 'night' ? 0.45 : 1;
     for (let i = 0; i < n; i++) {
       const l = LEAVES[i];
-      const flutter = Math.sin(tSec * 3 * l.light + l.ph);
-      l.x += (drift * l.light + flutter * 18) * dt;
-      l.y += (Math.sin(tSec * 1.7 * l.light + l.ph) * 14 + 6 - (gust - 1) * 40 + speed * 0.3) * dt;
-      if (l.y > H - 2) l.y = H - 2;                                        // skitter along the bottom
-      if (l.x > W + 6 || l.y < HZ - 10) { l.x = -6 - Math.random() * 30; l.y = HZ + Math.random() * (H - HZ); }
-      const flip = Math.abs(Math.sin(tSec * l.spin + l.ph)) > 0.5;         // tumbling: wide, then edge-on
-      const c = dim === 1 ? l.c : shadeLeaf(l.c, dim);
-      if (flip) { rect(l.x, l.y, 4, 3, c); rect(l.x + 1, l.y - 1, 2, 1, c); } else rect(l.x + 1, l.y - 1, 2, 4, c);
+      const p = (l.gy - HZ) / (H - HZ);                                    // 0 at the horizon … 1 at the bottom
+      const puff = gust * (0.75 + 0.35 * Math.sin(tSec * 0.8 * l.light + l.ph));
+      const air = l.h > 0.5;
+      l.x += ((wx.side || 0) * 2.6 * (air ? 1 : 0.45) * l.light * puff + Math.cos(tSec * l.light * 1.5 + l.ph) * 14 * leafAmt) * (0.25 + p) * dt;
+      l.gy += ((speed * 0.35 - (wx.along || 0) * 0.5 * l.light) * (0.15 + p) + Math.sin(tSec * 1.3 + l.ph) * 4 * leafAmt) * dt;
+      if (!air && Math.random() < dt * (0.15 + 1.6 * leafAmt) * puff) l.vh = (20 + Math.random() * 30) * (0.5 + leafAmt);
+      l.vh = Math.max(-25, (l.vh || 0) - 45 * dt);
+      l.h = Math.max(0, Math.min(ceiling * l.light, l.h + l.vh * dt));
+      if (l.h <= 0) l.vh = 0;
+      if (l.gy > H + 2) { l.gy = HZ + 4 + Math.random() * 20; l.x = Math.random() * W; }
+      else if (l.gy < HZ + 2) { l.gy = H - Math.random() * 10; l.x = Math.random() * W; }
+      if (l.x > W + 6) l.x = -4; else if (l.x < -6) l.x = W + 4;
+      const y = l.gy - l.h * (0.3 + p), c = dim === 1 ? l.c : shadeLeaf(l.c, dim);
+      const big = p > 0.45;                                                // nearer leaves are bigger
+      if (!air) rect(l.x, y, big ? 4 : 2, 1, c);                           // lying on the road
+      else if (Math.abs(Math.sin(tSec * l.spin + l.ph)) > 0.5) { rect(l.x, y, big ? 4 : 3, big ? 3 : 2, c); if (big) rect(l.x + 1, y - 1, 2, 1, c); }
+      else rect(l.x + 1, y - 1, big ? 2 : 1, big ? 4 : 3, c);              // edge-on while tumbling
     }
   }
   function shadeLeaf(hex, f) {
@@ -164,16 +229,16 @@ function create(canvas) {
     swayX = (wx.sway || 0) * (Math.sin(swayT * 1.7) * 3 + Math.sin(swayT * 4.3) * 1.2);
     // side wind in pixels per second, with gusts that come and go in step with the car's rocking
     const gust = 1 + 0.35 * (Math.sin(swayT * 0.9) * 0.6 + Math.sin(swayT * 2.3 + 0.7) * 0.4);
-    const drift = (wx.cross || 0) * 2.2 * gust;
-    if (!wx.kind) { drawLeaves(mode, wx, speed, dt, drift, gust); return; }
+    const drift = (wx.side || 0) * 2.2 * gust;                        // + = blowing to the right
+    if (!wx.kind) { drawLeaves(mode, wx, speed, dt, gust); return; }
     leafAmt = 0;
     const n = Math.round(DROPS.length * wx.amount);
     for (let i = 0; i < n; i++) {
       const d = DROPS[i];
       if (wx.kind === 'rain') {
         const fall = (180 + speed * 2) * d.s, len = 4 + speed / 30;
-        d.y += fall * dt; d.x += (drift - 20) * dt;
-        const lean = Math.round((drift - 20) / fall * len);                 // streaks lean into the wind
+        d.y += fall * dt; d.x += drift * dt;
+        const lean = Math.round(drift / fall * len);                        // streaks lean into the wind
         const c = mode === 'night' ? '#6f86c6' : '#b9d4ff';
         rect(d.x, d.y + len / 2, 1, len / 2, c); rect(d.x - lean, d.y, 1, len / 2, c);
       } else {

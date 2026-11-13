@@ -154,6 +154,114 @@ function create(canvas, api) {
     }
     writeStrip(route, ROUTE_N, RX, RZ, RH, 0.7, 0.02);
   }
+  // ---- roundabout: when Maps announces one, the road ends at a real roundabout (ring road round a grass
+  // island, with its other roads) and the route line goes anticlockwise round it to our exit and out.
+  // Far away it sits at the (pulled-in) navigation distance; from 12 m before the entry it stays put in the
+  // world and only moves by our own speed and GPS heading, so steering round it matches what we see.
+  const RB_R = 14, RB_HW = 3.6;                                   // centre-line radius, half width of the ring road
+  const rbTc = document.createElement('canvas'); rbTc.width = rbTc.height = 128; const rbT = rbTc.getContext('2d');
+  rbT.fillStyle = '#23262d'; rbT.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 900; i++) { rbT.fillStyle = 'rgba(255,255,255,' + Math.random() * 0.05 + ')'; rbT.fillRect(Math.random() * 128, Math.random() * 128, 1, 1); }
+  const rbTex = new THREE.CanvasTexture(rbTc); rbTex.wrapS = rbTex.wrapT = THREE.RepeatWrapping; rbTex.repeat.set(6, 6);
+  rbTex.colorSpace = THREE.SRGBColorSpace;
+  const rbRoadMat = new THREE.MeshStandardMaterial({ map: rbTex, roughness: 0.55 });
+  const armTex = tex.clone(); armTex.needsUpdate = true;                     // same markings as the road, not scrolling
+  const armMat = new THREE.MeshStandardMaterial({ map: armTex, roughness: 0.55 });
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xd9dde6 });
+  const rb = new THREE.Group(); rb.visible = false; s.add(rb);
+  const flat = (m, y) => { m.rotation.x = -Math.PI / 2; m.position.y = y; rb.add(m); return m; };
+  flat(new THREE.Mesh(new THREE.RingGeometry(RB_R - RB_HW, RB_R + RB_HW, 96, 1), rbRoadMat), 0.012);
+  flat(new THREE.Mesh(new THREE.RingGeometry(RB_R + RB_HW - 0.25, RB_R + RB_HW - 0.1, 96, 1), lineMat), 0.02);
+  flat(new THREE.Mesh(new THREE.RingGeometry(RB_R - RB_HW - 0.35, RB_R - RB_HW, 96, 1), new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: 0.8 })), 0.07);
+  flat(new THREE.Mesh(new THREE.CircleGeometry(RB_R - RB_HW - 0.3, 64), new THREE.MeshStandardMaterial({ color: 0x5b8a45, roughness: 1 })), 0.08);
+  const bushMat = new THREE.MeshStandardMaterial({ color: 0x3f6b33, roughness: 1 });
+  for (let i = 0; i < 9; i++) {
+    const a = i / 9 * Math.PI * 2 + 0.3, r = i % 3 === 0 ? 2 : 6.5, b = new THREE.Mesh(new THREE.SphereGeometry(i % 3 === 0 ? 1.6 : 1, 12, 8), bushMat);
+    b.position.set(Math.cos(a) * r, 0.5, Math.sin(a) * r); b.scale.y = 0.75; rb.add(b);
+  }
+  const ARM_L = 70, arms = [];
+  for (let i = 0; i < 6; i++) {                                     // the roads leaving the roundabout
+    const g = new THREE.PlaneGeometry(HALF * 2, ARM_L), uv = g.attributes.uv;
+    for (let j = 0; j < uv.count; j++) uv.setY(j, uv.getY(j) * ARM_L / 10);   // markings repeat every 10 m
+    const m = new THREE.Mesh(g, armMat); m.rotation.x = -Math.PI / 2; m.position.y = 0.006;
+    const holder = new THREE.Group(); holder.add(m); holder.visible = false; rb.add(holder); arms.push({ holder, m });
+  }
+  const rbState = { on: false, anchored: false, inside: false, cx: 0, cz: 0, h: 0, shape: null, entryS: 0 };
+  const dirOf = (h) => [Math.sin(h), -Math.cos(h)];                  // heading -> (x, z); h = 0 straight ahead
+  function setArms(shape) {
+    arms.forEach((a, i) => {
+      const deg = shape && shape.arms[i];
+      a.holder.visible = deg != null;
+      if (deg == null) return;
+      const h = deg * Math.PI / 180, [dx, dz] = dirOf(h), d = RB_R + RB_HW - 0.5 + ARM_L / 2;
+      a.holder.position.set(dx * d, 0, dz * d); a.holder.rotation.y = -h;
+    });
+  }
+  // returns true while a roundabout is being shown
+  function updateRoundabout(st, v, dt, lead) {
+    const n = st.nav, want = n && n.roundabout && n.distance != null ? n : null;
+    const S = rbState;
+    if (want && !S.on) { S.on = true; S.anchored = false; S.inside = false; }
+    if (S.on && want) S.shape = want.roundabout;
+    if (!S.on) { rb.visible = false; return false; }
+    if (want && !S.anchored) {
+      const d = Math.max(0, want.distance);
+      if (d <= 12 && S.placed) S.anchored = true;
+      else {
+        S.entryS = d <= 25 ? d : 25 + (Math.min(d, lead) - 25) * 45 / Math.max(1, lead - 25);   // pulled in, like turns
+        const e = pathAt(S.entryS), [dx, dz] = dirOf(e.h);
+        S.cx = e.x + dx * (RB_R + RB_HW); S.cz = e.z + dz * (RB_R + RB_HW); S.h = e.h; S.placed = true;
+        rb.visible = want.distance < lead + 40;
+      }
+    }
+    if (!want && !S.anchored) { S.on = false; S.placed = false; rb.visible = false; return false; }
+    if (S.anchored) {
+      // stay put in the world: the world moves toward us with our speed and turns against our own turning
+      const dth = bend.k * v * dt, px = LANE_X, pz = carZ;
+      const x = S.cx - px, z = S.cz - pz + v * dt;
+      const c = Math.cos(dth), sn = Math.sin(dth);
+      S.cx = px + x * c + z * sn; S.cz = pz - x * sn + z * c; S.h -= dth;
+      const [dx, dz] = dirOf(S.h);
+      const ez = S.cz - dz * (RB_R + RB_HW);
+      S.entryS = Math.max(0, carZ - ez);                              // how far ahead the entry still is
+      const far = Math.hypot(S.cx - px, S.cz - pz);
+      S.inside = far < RB_R + RB_HW + 2;
+      // done once Maps has moved on and the roundabout is well behind us
+      if (!want && (S.cz - pz > RB_R + 25 || far > 140)) { S.on = false; S.placed = false; rb.visible = false; return false; }
+      rb.visible = true;
+    }
+    rb.position.set(S.cx, 0, S.cz); rb.rotation.y = -S.h;
+    setArms(S.shape);
+    return true;
+  }
+  // route line round the roundabout: along the road to the entry, anticlockwise round the ring, out along the exit
+  function layRouteRoundabout() {
+    const S = rbState, pts = [];
+    if (!S.shape || !rb.visible) return layRoute(false);
+    for (let sAt = 3; sAt < S.entryS; sAt += 2) { const p = pathAt(sAt); pts.push([p.x + Math.cos(p.h) * LANE_X, p.z + Math.sin(p.h) * LANE_X]); }
+    const exitA = S.shape.angle, steps = 40;
+    for (let i = 0; i <= steps; i++) {                                 // from the entry (180 deg) down to the exit angle
+      const a = (180 - (180 - exitA) * i / steps) * Math.PI / 180, [dx, dz] = dirOf(S.h + a);
+      pts.push([S.cx + dx * RB_R, S.cz + dz * RB_R]);
+    }
+    const ha = S.h + exitA * Math.PI / 180, [ox, oz] = dirOf(ha), [rx, rz] = dirOf(ha + Math.PI / 2);
+    for (let d = RB_R + RB_HW + 2; d < RB_R + 45; d += 3) pts.push([S.cx + ox * d + rx * LANE_X, S.cz + oz * d + rz * LANE_X]);
+    // resample the polyline into the route strip
+    const len = [0];
+    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const total = len[len.length - 1];
+    if (total < 1) return layRoute(false);
+    let j = 0;
+    for (let i = 0; i <= ROUTE_N; i++) {
+      const at = total * i / ROUTE_N;
+      while (j < pts.length - 2 && len[j + 1] < at) j++;
+      const w = Math.min(1, (at - len[j]) / Math.max(1e-6, len[j + 1] - len[j]));
+      RX[i] = pts[j][0] + (pts[j + 1][0] - pts[j][0]) * w; RZ[i] = pts[j][1] + (pts[j + 1][1] - pts[j][1]) * w;
+      RH[i] = Math.atan2(pts[j + 1][0] - pts[j][0], -(pts[j + 1][1] - pts[j][1]));
+    }
+    routeMat.opacity += (0.72 - routeMat.opacity) * 0.15; route.mesh.visible = true;
+    writeStrip(route, ROUTE_N, RX, RZ, RH, 0.7, 0.03);
+  }
   const groundMat = new THREE.MeshStandardMaterial({ roughness: 1 });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat);
   ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; s.add(ground);
@@ -232,47 +340,61 @@ function create(canvas, api) {
   fx.fillStyle = fg; fx.fillRect(0, 0, 32, 32);
   const snowMat = new THREE.PointsMaterial({ size: 0.2, map: new THREE.CanvasTexture(fc), transparent: true, opacity: 0, depthWrite: false });
   const snow = new THREE.Points(snowGeo, snowMat); snow.frustumCulled = false; snow.visible = false; s.add(snow);
-  // ---- dry but windy: autumn leaves tumble across the road (rain and snow show the wind themselves) ----
-  const LEAF_N = 160;
-  const leafGeo = new THREE.PlaneGeometry(0.17, 0.11);
+  // ---- dry but windy: autumn leaves blow WITH the wind (rain and snow show the wind themselves) ----
+  // Calm: none. Soft breeze: a few leaves skittering low over the road. Strong wind: many, lifted high.
+  // They move the way the wind blows relative to the car (weather report direction + our compass heading).
+  const LEAF_N = 120;
+  const leafGeo = new THREE.PlaneGeometry(0.16, 0.1);
   const leafMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const leaves = new THREE.InstancedMesh(leafGeo, leafMat, LEAF_N);
   leaves.frustumCulled = false; leaves.visible = false; s.add(leaves);
   const LEAF_COLOURS = [0xb5562a, 0xd08a2e, 0xe0b23c, 0x8a5a2b, 0x9c3b22, 0x7d8a3a].map((c) => new THREE.Color(c));
   const leafDummy = new THREE.Object3D();
-  const placeLeaf = (l, fromUpwind) => {
-    l.x = fromUpwind ? BOX.x0 - rnd(0, 4) : rnd(BOX.x0, BOX.x1);
-    l.y = rnd(0.05, 3.5); l.z = rnd(BOX.z0, BOX.z1 - 6);
-    l.spin = rnd(2, 7); l.ax = rnd(0, 6.3); l.ay = rnd(0, 6.3); l.ph = rnd(0, 6.3); l.light = rnd(0.7, 1.15);
+  const placeLeaf = (l) => {
+    l.x = rnd(BOX.x0, BOX.x1); l.z = rnd(BOX.z0, BOX.z1 - 4); l.y = 0.03; l.vy = 0;
+    l.spin = rnd(3, 9); l.ax = rnd(0, 6.3); l.ay = rnd(0, 6.3); l.ph = rnd(0, 6.3);
+    l.light = rnd(0.55, 1.1); l.eddy = rnd(0.6, 1.8); l.lift = rnd(0.4, 1);    // each leaf flies a little differently
     return l;
   };
-  const leaf = Array.from({ length: LEAF_N }, (_, i) => { leaves.setColorAt(i, LEAF_COLOURS[i % LEAF_COLOURS.length]); return placeLeaf({}, false); });
+  const leaf = Array.from({ length: LEAF_N }, (_, i) => { leaves.setColorAt(i, LEAF_COLOURS[i % LEAF_COLOURS.length]); return placeLeaf({}); });
 
   const roadMat = roadMaterial;
   const SNOW_GROUND = new THREE.Color(0xd9e2ec);
   let wet = 0, white = 0, fogK = 0, flash = 0, swayT = 0, rainAmt = 0, snowAmt = 0, leafAmt = 0, leafT = 0;
 
-  function updateLeaves(dt, wx, v, drift, gust) {
-    // only when it is dry: from a fresh breeze (15 km/h across the road) to a full swirl at 50 km/h
-    const want = rainAmt + snowAmt < 0.1 ? Math.max(0, Math.min(1, ((wx.cross || 0) - 15) / 35)) : 0;
-    leafAmt += (want - leafAmt) * (first ? 1 : Math.min(1, dt * 0.6));
-    leaves.visible = leafAmt > 0.02;
+  // wx.side / wx.along: wind in km/h relative to the car (+ = blowing to the right / forward); wx.wind = strength
+  function updateLeaves(dt, wx, v, gust) {
+    const f = Math.max(0, Math.min(1, ((wx.wind || 0) - 8) / 45));          // 0 below 8 km/h … 1 at 53 km/h
+    const want = rainAmt + snowAmt < 0.1 ? f : 0;
+    leafAmt += (want - leafAmt) * (first ? 1 : Math.min(1, dt * 0.5));
+    leaves.visible = leafAmt > 0.01;
     if (!leaves.visible) return;
     leafT += dt;
-    const n = Math.round(LEAF_N * leafAmt);
+    const n = Math.max(1, Math.round(LEAF_N * Math.pow(leafAmt, 1.4)));      // a few in a breeze, many in a gale
+    const ceiling = 0.2 + 3.8 * Math.pow(leafAmt, 1.3);                       // low in a breeze, high in a gale
+    const wsx = (wx.side || 0) / 3.6, wsz = -(wx.along || 0) / 3.6;          // wind in m/s (scene: -z is forward)
     leaves.count = n;
     for (let i = 0; i < n; i++) {
       const l = leaf[i];
-      const flutter = Math.sin(leafT * 3 * l.light + l.ph);
-      l.x += (drift * l.light + flutter * 0.9) * dt;                       // light leaves fly almost with the wind
-      l.y += (Math.sin(leafT * 1.7 * l.light + l.ph) * 1.3 - 0.45 + (gust - 1) * 3) * dt;  // gusts lift them
-      l.y = Math.min(5, Math.max(0.03, l.y));                               // on the ground they skitter along
-      l.z += v * dt;
-      if (l.x > BOX.x1) placeLeaf(l, true);
-      else if (l.z > BOX.z1) { placeLeaf(l, false); l.z = rnd(BOX.z0, BOX.z0 + 15); }
-      const tumble = l.y > 0.05 ? leafT * l.spin : 0;                      // lying flat once it lands
+      // each leaf feels its own gusts and eddies; light leaves fly almost at wind speed
+      const puff = gust * (0.75 + 0.35 * Math.sin(leafT * 0.8 * l.eddy + l.ph));
+      const airborne = l.y > 0.06;
+      const carry = (airborne ? 0.8 : 0.35) * l.light * puff;                // on the ground they only skitter
+      const ex = Math.cos(leafT * l.eddy + l.ph) * 1.4 * leafAmt, ez = Math.sin(leafT * l.eddy * 1.3 + l.ph) * 1.4 * leafAmt;
+      l.x += (wsx * carry + ex) * dt;
+      l.z += (wsz * carry + ez + v) * dt;                                      // + v: the road streams past
+      // gusts pick leaves up (higher with a stronger wind), gravity floats them down again
+      if (!airborne && Math.random() < dt * (0.15 + 1.6 * leafAmt) * l.lift * puff) l.vy = rnd(1, 2.5) * (0.5 + leafAmt);
+      l.vy -= 2.2 * dt; l.vy = Math.max(l.vy, -0.9);
+      l.y = Math.max(0.03, Math.min(ceiling * l.lift + 0.1, l.y + l.vy * dt));
+      if (l.y <= 0.03) l.vy = 0;
+      // leaves leaving the patch around the car come back in on the upwind side
+      if (l.z > BOX.z1) { l.z = BOX.z0 + rnd(0, 20); l.x = rnd(BOX.x0, BOX.x1); }
+      else if (l.z < BOX.z0) { l.z = BOX.z1 - rnd(0, 6); l.x = rnd(BOX.x0, BOX.x1); }
+      if (l.x > BOX.x1) l.x = BOX.x0 + rnd(0, 2); else if (l.x < BOX.x0) l.x = BOX.x1 - rnd(0, 2);
+      const tumble = airborne ? leafT * l.spin * (0.4 + leafAmt) : 0;         // lying flat on the ground
       leafDummy.position.set(l.x, l.y, l.z);
-      leafDummy.rotation.set(l.ax + tumble, l.ay + tumble * 0.7, flutter * 0.6);
+      leafDummy.rotation.set(airborne ? l.ax + tumble : -Math.PI / 2, l.ay + tumble * 0.7, airborne ? Math.sin(leafT * 3 + l.ph) * 0.6 : l.ay);
       leafDummy.updateMatrix();
       leaves.setMatrixAt(i, leafDummy.matrix);
     }
@@ -286,8 +408,9 @@ function create(canvas, api) {
     snowAmt += ((wx.kind === 'snow' ? wx.amount : 0) - snowAmt) * k;
     // side wind pushes rain, snow and leaves sideways (m/s); gusts come and go in step with the car's rocking
     const gust = 1 + 0.35 * (Math.sin(swayT * 0.9) * 0.6 + Math.sin(swayT * 2.3 + 0.7) * 0.4);
-    const drift = (wx.cross || 0) / 3.6 * 0.8 * gust;
-    updateLeaves(dt, wx, v, drift, gust);
+    const drift = (wx.side || 0) / 3.6 * 0.8 * gust;                 // m/s, + = toward the right
+    const push = -(wx.along || 0) / 3.6 * 0.6 * gust;                 // m/s along the road (tail wind = forward)
+    updateLeaves(dt, wx, v, gust);
     // rain: falls ~9 m/s, rushes toward the camera with the car's speed, streaks stretch with speed
     rain.visible = rainAmt > 0.02;
     if (rain.visible) {
@@ -296,11 +419,13 @@ function create(canvas, api) {
       const len = 0.35 + v * 0.025;
       for (let i = 0; i < n; i++) {
         const o = i * 6, f = rainSeed[i];
-        let x = rainPos[o] + drift * dt, y = rainPos[o + 1] - 9 * f * dt, z = rainPos[o + 2] + v * dt;
+        let x = rainPos[o] + drift * dt, y = rainPos[o + 1] - 9 * f * dt, z = rainPos[o + 2] + (v + push) * dt;
         if (y < 0 || z > BOX.z1) { x = rnd(BOX.x0, BOX.x1); y = rnd(BOX.y1 * 0.5, BOX.y1); z = rnd(BOX.z0, BOX.z1 - 4); }
+        else if (z < BOX.z0) z = BOX.z1 - rnd(0, 4);                    // blown forward by a tail wind
         if (x > BOX.x1) x -= BOX.x1 - BOX.x0; else if (x < BOX.x0) x += BOX.x1 - BOX.x0;
         rainPos[o] = x; rainPos[o + 1] = y; rainPos[o + 2] = z;
-        rainPos[o + 3] = x - drift * len / (9 * f); rainPos[o + 4] = y + len;   // streaks lean into the wind rainPos[o + 5] = z - v * 0.02;
+        rainPos[o + 3] = x - drift * len / (9 * f); rainPos[o + 4] = y + len;   // streaks lean into the wind
+        rainPos[o + 5] = z - (v + push) * 0.02;
       }
       rainGeo.attributes.position.needsUpdate = true;
       rainMat.opacity = 0.18 + 0.32 * rainAmt;
@@ -314,8 +439,9 @@ function create(canvas, api) {
       for (let i = 0; i < n; i++) {
         const o = i * 3, sd = snowSeed[i];
         let x = snowPos[o] + (Math.sin(swayT * 1.3 + sd) * 0.6 + drift) * dt;
-        let y = snowPos[o + 1] - (1.0 + (sd % 1) * 0.6) * dt, z = snowPos[o + 2] + v * dt;
+        let y = snowPos[o + 1] - (1.0 + (sd % 1) * 0.6) * dt, z = snowPos[o + 2] + (v + push) * dt;
         if (y < 0 || z > BOX.z1) { x = rnd(BOX.x0, BOX.x1); y = rnd(BOX.y1 * 0.6, BOX.y1); z = rnd(BOX.z0, BOX.z1 - 4); }
+        else if (z < BOX.z0) z = BOX.z1 - rnd(0, 4);
         if (x > BOX.x1) x -= BOX.x1 - BOX.x0; else if (x < BOX.x0) x += BOX.x1 - BOX.x0;
         snowPos[o] = x; snowPos[o + 1] = y; snowPos[o + 2] = z;
       }
@@ -418,9 +544,10 @@ function create(canvas, api) {
       const kNow = st.steer != null ? Math.tan(st.steer * Math.PI / 180) / 2.6
         : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
       bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * kb;
-      const nav = st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
       // show the turn ~20 s ahead at the current speed (at least 120 m; the road ahead is 270 m long)
       const lead = Math.max(120, Math.min(260, v * 20));
+      const rbOn = updateRoundabout(st, v, dt, lead);                  // a roundabout replaces the bend/side road
+      const nav = !rbOn && st.nav && st.nav.distance != null && st.nav.dir ? st.nav : null;
       const near = nav ? Math.min(1, Math.max(0, (lead + 40 - nav.distance) / 40)) : 0;
       bend.amount += ((nav ? nav.amount * near : 0) - bend.amount) * kb;
       // where the turn is DRAWN: its true distance when close (under 25 m); further away it is pulled in, so a turn
@@ -439,12 +566,17 @@ function create(canvas, api) {
       bend.split += ((close && !agree ? 1 : 0) - bend.split) * kb;
       layRoad(carZ);
       layBranch();
-      layRoute(!!nav && bend.amount > 0.05);
+      // with a roundabout the road stops at its entry (the ring and its roads take over from there) until we
+      // have left it again
+      const cut = rbOn && rb.visible && (!rbState.anchored || rbState.inside || rbState.entryS > 0 || (st.nav && st.nav.roundabout));
+      road.geo.setDrawRange(0, (cut ? Math.min(ROAD_N, I0 + Math.max(2, Math.ceil(rbState.entryS / SEG) + 1)) : ROAD_N) * 6);
+      if (rbOn) layRouteRoundabout(); else layRoute(!!nav && bend.amount > 0.05);
       for (const g of lamps) {                            // street lights stand along the main road
         g.userData.s -= v * dt;
         if (g.userData.s < -14) g.userData.s += COUNT * SPACING;
         const p = pathAt(g.userData.s);
         g.position.set(p.x, 0, p.z); g.rotation.y = -p.h;
+        g.visible = !cut || g.userData.s < rbState.entryS - 3;       // none standing in the roundabout
       }
       // the car sits on the road, its nose following the road just ahead (right turn = negative yaw)
       bend.yaw += (-pathAt(4).h - bend.yaw) * kb;

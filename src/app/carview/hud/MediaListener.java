@@ -164,6 +164,17 @@ public class MediaListener extends NotificationListenerService {
             o.put("title", str(x.getCharSequence(Notification.EXTRA_TITLE)));
             o.put("text", str(x.getCharSequence(Notification.EXTRA_TEXT)));
             o.put("sub", str(x.getCharSequence(Notification.EXTRA_SUB_TEXT)));
+            // the maneuver itself ("at the roundabout, take the 2nd exit") may sit in any of these
+            StringBuilder more = new StringBuilder();
+            for (String k : new String[] { Notification.EXTRA_BIG_TEXT, Notification.EXTRA_INFO_TEXT,
+                    Notification.EXTRA_SUMMARY_TEXT, Notification.EXTRA_TITLE_BIG }) {
+                CharSequence c = x.getCharSequence(k);
+                if (c != null && c.length() > 0) more.append(c).append(" | ");
+            }
+            CharSequence[] lines = x.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+            if (lines != null) for (CharSequence c : lines) more.append(c).append(" | ");
+            if (n.tickerText != null) more.append(n.tickerText);
+            o.put("more", more.toString());
             Icon icon = n.getLargeIcon();
             if (icon != null) {
                 Drawable d = icon.loadDrawable(this);
@@ -202,7 +213,7 @@ public class MediaListener extends NotificationListenerService {
                 b.compress(Bitmap.CompressFormat.PNG, 100, f);
             }
             try (java.io.FileOutputStream f = new java.io.FileOutputStream(new java.io.File(dir, name + ".txt"))) {
-                f.write(String.join("\n", o.optString("title"), o.optString("text"), o.optString("sub"), "").getBytes("UTF-8"));
+                f.write(String.join("\n", o.optString("title"), o.optString("text"), o.optString("sub"), o.optString("more"), "").getBytes("UTF-8"));
             }
         } catch (Exception ignored) { }
     }

@@ -197,6 +197,34 @@ function classifyArrow(src) {
           for (let y = y0; y < y1; y++) for (let x = 0; x < N; x++) if (isArrow(x, y)) { s++; sx += x; minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
           return s ? { cx: sx / s / (N - 1), spread: (maxX - minX) / (N - 1), n: s } : null;
         };
+        // Roundabout icons draw a RING: background enclosed by the arrow (an ordinary arrow never encloses anything).
+        // Flood the background in from the picture's edges; whatever background is left is the hole of the ring.
+        const outside = new Uint8Array(N * N), queue = [];
+        for (let i = 0; i < N; i++) for (const [x, y] of [[i, 0], [i, N - 1], [0, i], [N - 1, i]]) {
+          if (!isArrow(x, y) && !outside[y * N + x]) { outside[y * N + x] = 1; queue.push(x, y); }
+        }
+        while (queue.length) {
+          const y = queue.pop(), x = queue.pop();
+          for (const [a, b] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+            if (a >= 0 && b >= 0 && a < N && b < N && !outside[b * N + a] && !isArrow(a, b)) { outside[b * N + a] = 1; queue.push(a, b); }
+          }
+        }
+        let hn = 0, hx = 0, hy = 0;
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (!outside[y * N + x] && !isArrow(x, y)) { hn++; hx += x; hy += y; }
+        if (hn >= N * N * 0.015) {
+          hx /= hn; hy /= hn;
+          const ringOut = Math.sqrt(hn / Math.PI) + N * 0.16;               // hole radius + the ring's stroke
+          // the exit is the arrow part that sticks OUT of the ring, apart from the stem coming up from below
+          let ex = 0, ey = 0, en = 0;
+          for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+            if (!isArrow(x, y) || Math.hypot(x - hx, y - hy) < ringOut) continue;
+            if (y > hy && Math.abs(x - hx) < N * 0.14) continue;              // the stem
+            ex += x; ey += y; en++;
+          }
+          const angle = en ? Math.atan2(ex / en - hx, -(ey / en - hy)) * 180 / Math.PI : 0;   // 0 = straight on, + = right
+          return resolve({ dir: Math.abs(angle) < 30 ? 0 : Math.sign(angle), amount: Math.min(1, Math.abs(angle) / 90),
+            roundabout: { angle: Math.round(angle) } });
+        }
         // the arrow head is in the top part; the stem it starts from is in the bottom part
         const top = centroid(0, Math.round(N * 0.45)), bottom = centroid(Math.round(N * 0.6), N);
         if (!top) return resolve(null);
@@ -217,15 +245,55 @@ function classifyArrow(src) {
   });
 }
 
+/** "At the roundabout, take the 2nd exit" (English, Dutch, German, French): null if it's not a roundabout. */
+function roundaboutFrom(text) {
+  const t = ' ' + String(text || '').toLowerCase() + ' ';
+  if (!/roundabout|traffic circle|rotonde|kreisverkehr|kreisel|rond-point|giratoire/.test(t)) return null;
+  const m = t.match(/(\d)\s*(?:st|nd|rd|th|ste|de|e|\.|ème|eme)?\s*(?:exit|afslag|uitrit|ausfahrt|sortie)/);
+  if (m) return { exit: +m[1] };
+  const words = [['first', 1], ['second', 2], ['third', 3], ['fourth', 4], ['fifth', 5], ['eerste', 1], ['tweede', 2],
+    ['derde', 3], ['vierde', 4], ['vijfde', 5], ['ersten', 1], ['zweiten', 2], ['dritten', 3], ['vierten', 4], ['erste', 1], ['zweite', 2], ['dritte', 3], ['vierte', 4],
+    ['première', 1], ['premiere', 1], ['deuxième', 2], ['deuxieme', 2], ['troisième', 3], ['troisieme', 3], ['quatrième', 4]];
+  for (const [w, k] of words) if (t.includes(' ' + w + ' ')) return { exit: k };
+  return { exit: null };
+}
+
+/**
+ * The roundabout for themes: the exit to take as an angle (0 = straight on, 90 = right, -90 = left, 180 = back)
+ * and the angles of all its arms, assuming they are evenly spread (right-hand traffic: anticlockwise, so the
+ * 1st exit is on the right).
+ */
+function roundaboutShape(exit, angle) {
+  if (exit) {
+    const arms = Math.max(4, exit + 1), step = 360 / arms;
+    return { exit, angle: 180 - exit * step, arms: Array.from({ length: arms - 1 }, (_, k) => 180 - (k + 1) * step) };
+  }
+  const a = angle == null ? 0 : angle;
+  const arms = [90, 0, -90].filter((x) => Math.abs(x - a) > 30).concat([a]).sort((p, q) => q - p);
+  return { exit: null, angle: a, arms };
+}
+
 function updateNavTurn(n) {
-  if (!n) { turn.distance = null; turn.dir = 0; turn.amount = 0; turn.iconKey = null; return; }
+  if (!n) { turn.distance = null; turn.dir = 0; turn.amount = 0; turn.iconKey = null; turn.roundabout = null; return; }
   const d = parseDistance(n.title) ?? parseDistance(n.text);
   if (d != null) { turn.distance = d; turn.at = performance.now(); }
+  const all = [n.title, n.text, n.sub, n.more].join(' ');
+  const ra = roundaboutFrom(all);
+  turn.roundabout = ra && ra.exit ? roundaboutShape(ra.exit) : null;
   const words = wordsDirection(n.title + ' ' + n.text);
-  if (words) { turn.dir = words.dir; turn.amount = words.amount; return; }
+  if (words) {
+    turn.dir = words.dir; turn.amount = words.amount;
+    if (ra && !ra.exit) turn.roundabout = roundaboutShape(null, words.dir * 90);
+  }
   if (n.icon && n.icon !== turn.iconKey) {
     turn.iconKey = n.icon;
-    classifyArrow(n.icon).then((r) => { if (r && turn.iconKey === n.icon) { turn.dir = r.dir; turn.amount = r.amount; } });
+    classifyArrow(n.icon).then((r) => {
+      if (!r || turn.iconKey !== n.icon) return;
+      if (r.roundabout) {            // the icon shows a ring: use its exit unless the text named an exit number
+        if (!turn.roundabout || !turn.roundabout.exit) turn.roundabout = roundaboutShape(null, r.roundabout.angle);
+      } else if (ra && !turn.roundabout) turn.roundabout = roundaboutShape(null, r.dir * 90);
+      if (!words) { turn.dir = r.dir; turn.amount = r.amount; }
+    });
   }
 }
 
@@ -246,7 +314,7 @@ function navState() {
   let distance = turn.distance;
   if (distance != null) distance = Math.max(0, distance - (car.speed / 3.6) * (performance.now() - turn.at) / 1000);
   if (window.DEMO_DIST != null) distance = window.DEMO_DIST;          // desktop preview only
-  return { distance, dir: turn.dir, amount: turn.amount, street: car.nav.text || '' };
+  return { distance, dir: turn.dir, amount: turn.amount, street: car.nav.text || '', roundabout: turn.roundabout || null };
 }
 
 function sceneState() {
@@ -657,9 +725,14 @@ function weather() {
   // side wind: the part of the wind blowing across the road (needs a heading); gusts make it bumpier
   const wind = DEMO_WX && DEMO_WX.wind != null ? DEMO_WX.wind : (w.wind || 0);
   const gust = DEMO_WX && DEMO_WX.gust != null ? DEMO_WX.gust : (w.gust || wind);
-  const hd = car.bearing == null ? 90 : car.bearing;              // unknown heading: assume the worst (full side wind)
-  const cross = Math.abs(Math.sin(((w.windDir || 0) - hd) * Math.PI / 180)) * Math.max(wind, gust * 0.8);
-  return { kind, amount, wind, cross, sway: Math.max(0, Math.min(1, (cross - 20) / 45)), fog: [45, 48].includes(c), thunder: c >= 95 };
+  const windDir = DEMO_WX && DEMO_WX.dir != null ? DEMO_WX.dir : (w.windDir || 0);   // where it comes FROM, degrees
+  const hd = car.bearing == null ? windDir - 90 : car.bearing;     // unknown heading: assume a full side wind
+  // the wind relative to the car: which way it blows TO (0 = straight ahead, 90 = toward the right)
+  const rel = (windDir + 180 - hd) * Math.PI / 180, strength = Math.max(wind, gust * 0.8);
+  const side = Math.sin(rel) * strength, along = Math.cos(rel) * strength;   // km/h, + = to the right / forward
+  const cross = Math.abs(side);
+  return { kind, amount, wind, gust, windDir, side, along, cross, sway: Math.max(0, Math.min(1, (cross - 20) / 45)),
+    fog: [45, 48].includes(c), thunder: c >= 95 };
 }
 let DEMO_WX = null;
 function wxIcon(x) {
@@ -679,6 +752,11 @@ function tickCompass(dt) {
   shownHeading = (shownHeading + d * Math.min(1, dt * 4) + 360) % 360;
   $('rose').setAttribute('transform', 'rotate(' + (-shownHeading).toFixed(1) + ')');
   $('hdg').textContent = COMPASS[Math.round(car.bearing / 45) % 8];
+  // wind arrow: where the wind blows to; bolder with a stronger wind, hidden when calm
+  const wx = weather(), strong = Math.max(0, Math.min(1, (wx.wind - 5) / 35));
+  $('windArrow').setAttribute('opacity', wx.wind < 5 ? '0' : (0.45 + 0.55 * strong).toFixed(2));
+  $('windArrow').setAttribute('transform', 'rotate(' + (wx.windDir + 180).toFixed(0) + ') scale(' + (0.75 + 0.25 * strong).toFixed(2) + ')');
+  $('compass').title = 'Heading ' + COMPASS[Math.round(car.bearing / 45) % 8] + (wx.wind >= 5 ? ' · wind ' + Math.round(wx.wind) + ' km/h' : '');
 }
 
 // ------------------------------------------------------------------ phone (top left)
@@ -816,7 +894,7 @@ if (Native) {
   if (scene === 'open') onCar('doors', { frontLeft: true, rearLeft: true, frontRight: true, rearRight: true, tailgate: true });
   if (scene === 'rain') DEMO_WX = { kind: 'rain', amount: 0.9, wind: 25 };
   if (scene === 'snow') DEMO_WX = { kind: 'snow', amount: 0.8, wind: 15 };
-  if (scene === 'wind') DEMO_WX = { kind: null, amount: 0, wind: 75, gust: 95 };
+  if (scene === 'wind') DEMO_WX = { kind: null, amount: 0, wind: +(q.get('wind') || 60), gust: +(q.get('wind') || 60) * 1.3, dir: +(q.get('wdir') || 315) };
   if (scene === 'call') onCar('call', { state: 'ringing', dir: 'in', name: 'Alex', number: '+31 6 1234 5678' });
   if (scene === 'oncall') onCar('call', { state: 'active', dir: 'in', name: 'Alex' });
   onCar('access', { location: true, media: true });
@@ -825,6 +903,10 @@ if (Native) {
   // road bends: ?scene=turnleft|turnright (navigation, &dist=60 freezes the distance) or ?scene=corner (GPS turn)
   if (scene === 'turnleft' || scene === 'turnright') {
     onCar('nav', { title: (q.get('dist') || '160') + ' m', text: 'Turn ' + (scene === 'turnleft' ? 'left' : 'right') + ' onto Stationsweg', sub: 'Arrive 10:52 · 14 km' });
+    if (q.get('dist')) window.DEMO_DIST = parseFloat(q.get('dist'));
+  }
+  if (scene === 'roundabout') {
+    onCar('nav', { title: (q.get('dist') || '120') + ' m', text: 'At the roundabout, take the ' + ['1st', '2nd', '3rd', '4th'][(+(q.get('exit') || 2)) - 1] + ' exit onto Stationsweg', sub: 'Arrive 10:52 · 14 km' });
     if (q.get('dist')) window.DEMO_DIST = parseFloat(q.get('dist'));
   }
   if (scene === 'corner' || q.get('rate')) { turn.rate = parseFloat(q.get('rate') || '20'); window.DEMO_RATE = turn.rate; }

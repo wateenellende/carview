@@ -175,14 +175,17 @@ export default {
 | `lights` | `true` / `false` / `null` | headlights on/off, `null` = not known yet |
 | `doors` | object | `{ frontLeft, rearLeft, frontRight, rearRight, tailgate }` booleans |
 | `openView` | boolean | parked with something open: show the car so the open parts are visible |
-| `nav` | object or `null` | Google Maps is navigating (make room: the car may shrink/move). `nav.distance` = metres to the next turn (counted down from the speed between Maps updates, may be `null`), `nav.dir` = -1 left / 0 straight / +1 right, `nav.amount` = 0…1 how sharp, `nav.street` |
+| `nav` | object or `null` | Google Maps is navigating (make room: the car may shrink/move). `nav.distance` = metres to the next turn (counted down from the speed between Maps updates, may be `null`), `nav.dir` = -1 left / 0 straight / +1 right, `nav.amount` = 0…1 how sharp, `nav.street`, `nav.roundabout` (see below) |
 | `turnRate` | degrees/second | how fast the car is turning **now**, from the GPS heading (+ = right; 0 when slow or parked) |
 | `steer` | degrees or `null` | steering-wheel angle if the car/CAN box provides it (+ = right); when present, prefer it over `turnRate` |
 | `sky` | `'day'` / `'dusk'` / `'night'` | time of day (already darker when the lights are on) |
 | `wx.kind` | `null` / `'rain'` / `'snow'` | precipitation to draw |
 | `wx.amount` | 0…1 | how heavy |
 | `wx.wind` | km/h | wind speed |
-| `wx.cross` | km/h | wind across the road (relative to the driving direction) |
+| `wx.windDir` | degrees | where the wind comes **from** (weather report, 0 = north) |
+| `wx.side` | km/h | wind relative to the car: + = blowing toward the right, − = toward the left |
+| `wx.along` | km/h | wind relative to the car: + = blowing forward (tail wind), − = head wind |
+| `wx.cross` | km/h | size of the side wind (`abs(wx.side)`) |
 | `wx.sway` | 0…1 | how much the car should rock from side wind |
 | `wx.fog`, `wx.thunder` | boolean | fog; thunderstorm (flash now and then) |
 | `colour` | `"#rrggbb"` | the vehicle colour the user picked |
@@ -198,7 +201,7 @@ Bends are an impression, not a map. Speed, GPS turn rate and navigation are all 
    `turnRate (rad/s) / speed (m/s)`. Behind the car it stays the same; ahead it fades out over ~40 m (GPS can't
    see the road ahead). So the car is always on the road.
 3. **Navigation turn far away** (more than ~2.5 s of driving, 15-40 m): an extra bend in the main road starting at
-   `nav.distance` (radius ~12 m, angle `nav.amount * 90°`, side `nav.dir`). Fade it in from ~200 m.
+   `nav.distance` (radius ~12 m, angle `nav.amount * 90°`, side `nav.dir`). Fade it in about 20 s ahead (and draw it closer than it really is while far away, or it is a speck at the horizon).
 4. **Navigation turn close by:** if the car is turning the same way (sign of the GPS curvature = `nav.dir`), drop
    the navigation bend: GPS alone shows the turn (merged). Otherwise draw it as a **side road** forking off at
    `nav.distance`, while the main road keeps following the GPS (split).
@@ -312,3 +315,24 @@ Tap the car to make sure your `vehicleRect` is right.
    with a complete `options` geometry; standalone ZIPs must contain their own code.
 3. Real proportions (for 3D: metres), drawn from behind as the main view.
 4. Zip, install, then tap the car in a theme of that family until yours appears.
+
+## Roundabouts
+
+When Google Maps announces a roundabout, `nav.roundabout` is an object instead of `null`:
+
+| field | meaning |
+| --- | --- |
+| `exit` | which exit to take (1 = first), or `null` if Maps did not say |
+| `angle` | direction of that exit in degrees: 0 = straight on, 90 = right, −90 = left, ±180 = back the way we came |
+| `arms` | angles of all roads leaving the roundabout (not counting ours, which is at 180) |
+
+Traffic drives anticlockwise (right-hand traffic), so the 1st exit is on the right. `nav.distance` is the
+distance to the entry. Draw the road ending at a ring with an island and these roads, and do **not** use the
+bend / side-road logic meanwhile: steering into and round a roundabout makes the GPS curvature swing right and
+left. The Modern theme keeps the roundabout fixed in the world from 12 m before the entry, moving it only by the
+car's own speed and GPS turning, and draws the route line anticlockwise round the ring to the exit.
+
+## Wind
+
+Leaves (when dry), rain and snow move with `wx.side` / `wx.along`. Calm (under ~8 km/h): no leaves at all; a
+breeze: a few, low; a gale: many, lifted high.
