@@ -82,7 +82,7 @@ function create(canvas) {
     const v = (st.speed || 0) / 3.6, kb = Math.min(1, dt * 2);
     const kNow = st.steer != null ? Math.tan(st.steer * Math.PI / 180) / 2.6
       : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
-    bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * kb;
+    bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * Math.min(1, dt * 5);   // follows the GPS quickly
     // a roundabout replaces the bend / side road: drawn as a ring with its roads (see drawRoad)
     const rbNav = st.nav && st.nav.roundabout && st.nav.distance != null ? st.nav : null;
     rbDraw = rbNav && rbNav.distance < 450 ? { at: Math.max(0, rbNav.distance) * 0.25, shape: rbNav.roundabout } : null;

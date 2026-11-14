@@ -51,8 +51,9 @@ function loop(now) {
     const mod = await import(cfg.theme.url);
     const theme = mod.default || mod;
     instance = await theme.create(canvas, { manifest: cfg.theme.manifest || {}, base: cfg.theme.base });
-    if (cfg.vehicle) await loadVehicle(cfg.vehicle);
-    post({ type: 'ready' });
+    // draw the road and sky straight away; the vehicle (the heaviest part) is built next and appears when done
     requestAnimationFrame(loop);
+    post({ type: 'ready' });
+    if (cfg.vehicle) setTimeout(() => loadVehicle(cfg.vehicle), 0);
   } catch (e) { fail('theme', e); }
 })();

@@ -21,13 +21,23 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #05070c; col
 .btn.on { background: linear-gradient(135deg, var(--accent1), var(--accent2)); border-color: transparent; }
 
 /* top: status pill + big speed */
-#status { top: 2.5vh; left: 50%; transform: translateX(-50%); display: flex; gap: 3vh; padding: 1.2vh 3vh; border-radius: 999px; font-size: 2.1vh; white-space: nowrap; }
-#status .on { color: #ffe9a6; }
-#status .off { color: var(--ink); }
-#speedBox { position: absolute; top: 10vh; left: 0; right: 0; text-align: center; pointer-events: none; transition: transform .5s; }
+/* information bar across the top: clock | SPEED | weather. The speed is the biggest and brightest; the clock and
+   the weather sit level with it, smaller and a touch dimmer, with one small line of detail underneath. */
+#speedBox { position: absolute; top: 3vh; left: 50%; transform: translateX(-50%); text-align: center; cursor: pointer; transition: transform .5s; }
+.infoSide { position: absolute; top: 5.2vh; cursor: pointer; white-space: nowrap; text-shadow: 0 .3vh 2vh rgba(0,0,0,.55); }
+#clockBox { right: calc(50% + 15vh); text-align: right; }
+#wxBox { left: calc(50% + 15vh); text-align: left; }
+.infoSide .big { font-size: 6vh; font-weight: 300; line-height: 1; letter-spacing: -.1vh; opacity: .92; }
+.infoSide .s { font-size: 1.9vh; color: var(--dim); margin-top: .8vh; letter-spacing: .04em; }
+#clock .ampm, #temp .tu { font-size: 2.3vh; margin-left: .4vh; opacity: .75; letter-spacing: .05em; }
+#wx { font-size: 4.4vh; margin-right: 1.2vh; vertical-align: .3vh; }
+#lights { margin-left: 1.4vh; color: #9ff0b0; letter-spacing: .1em; }
+#lights::before { content: '●'; margin-right: .5vh; }
+.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0%, 30% { background: rgba(255,255,255,.18); } 100% { background: transparent; } }
 #speed { font-size: 12.8vh; font-weight: 200; letter-spacing: -0.3vh; line-height: 1; text-shadow: 0 0.5vh 4vh rgba(0,0,0,0.5); }
 #speedBox .unit { font-size: 1.9vh; letter-spacing: .3em; text-transform: uppercase; margin-top: .6vh; }
-body.nav #speedBox { transform: scale(0.8) translateY(-2vh); }
+body.nav #speedBox { transform: translateX(-50%) scale(0.85); }
 
 /* left panel: destinations / next turn */
 #left { left: 2.2vw; top: 21vh; width: 24vw; min-width: 250px; padding: 2.8vh; transition: transform .6s cubic-bezier(.2,.8,.2,1), opacity .6s; }

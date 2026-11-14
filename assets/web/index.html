@@ -20,8 +20,12 @@
 <!-- blends the car's own status bar (solid #1a1b20 above the page) smoothly into the sky -->
 <div id="topFade"></div>
 
-<div id="status" class="t glass">
-  <span id="dir">--</span><span id="wx"></span><span id="temp">--&deg;C</span><span id="lights" class="off">Lights --</span>
+<!-- information bar: clock | speed | weather. Tap one to switch its format, hold it for its settings. -->
+<div id="clockBox" class="infoSide" title="Tap: 24-hour / AM-PM · hold: settings">
+  <div class="big" id="clock">--:--</div><div class="s" id="date"></div>
+</div>
+<div id="wxBox" class="infoSide" title="Tap: °C / °F · hold: settings">
+  <div class="big"><span id="wx"></span><span id="temp">--°</span></div><div class="s" id="wxSub"></div>
 </div>
 
 <div id="phoneBox">
@@ -41,7 +45,7 @@
 
 <div id="sat" class="s">-- satellites</div>
 
-<div id="speedBox"><div id="speed">--</div><div class="s unit">km/h</div></div>
+<div id="speedBox" title="Tap: km/h / mph · hold: settings"><div id="speed">--</div><div class="s unit"><span id="unit">km/h</span><span id="lights" hidden>Lights</span></div></div>
 
 <div id="left" class="px glass">
   <div id="dests">
@@ -98,7 +102,13 @@
     <div class="s cap">Theme</div>
     <div class="row wrap" id="themeRow">
     </div>
-    <div class="s cap">Vehicle (or tap the car)</div>
+    <div class="s cap" id="setDisplay">Clock, temperature and speed</div>
+    <div class="s hint">On the dashboard: tap the clock, temperature or speed to switch; hold it to come here.</div>
+    <div class="row wrap" id="clockRow"></div>
+    <div class="row wrap" id="tempRow"></div>
+    <div class="row wrap" id="speedRow"></div>
+    <div class="row"><span class="btn wide" id="dateSettings">Time zone and date (Android)</span></div>
+    <div class="s cap" id="setVehicle">Vehicle (tap the car for the next one, hold it to come here)</div>
     <div class="destRow"><input class="ad" id="vehicleSearch" type="search" placeholder="Search make, model, body type…" autocomplete="off" spellcheck="false" aria-label="Search vehicles"></div>
     <div class="vehicleGrid" id="vehicleRow" aria-label="Available vehicles"></div>
     <div class="s hint" id="vehicleEmpty" hidden>No matching vehicles in this theme.</div>

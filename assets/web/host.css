@@ -1,6 +1,10 @@
 ﻿/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Dashboard basics that every theme relies on. Themes style everything else in their own theme.css. */
-#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; display: block; background: #05070c; }
+/* until the theme has drawn its first frame: a soft dusk sky over dark ground instead of a black screen */
+body:not(.sceneReady) { background: linear-gradient(#1a1b20 0%, #3b4a66 22%, #8a7b8f 47%, #2f3a33 52%, #1d2420 100%) fixed; }
+#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; display: block; background: transparent;
+  opacity: 0; transition: opacity .5s ease-out; }
+body.sceneReady #scene { opacity: 1; }
 #tapLayer { position: fixed; inset: 0; }
 /* The head unit draws its status bar in solid #1a1b20 right above the page; without this the bright sky
    started abruptly under it. Fade from exactly that colour, with a faint line to mark the edge. */

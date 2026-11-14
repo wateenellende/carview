@@ -18,12 +18,20 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f15; col
 .btn.hot { background: var(--gold); color: var(--navy); }
 .btn.on { background: var(--gold); color: var(--navy); }
 
-#status { position: absolute; top: 2.2vh; left: 0; right: 0; display: flex; justify-content: center; gap: 5vh; text-shadow: 3px 3px 0 var(--navy); }
-#status .off { color: #7c7aa0; }
-#status .on { color: #fff3b0; }
-#speedBox { position: absolute; top: 11vh; left: 0; right: 0; text-align: center; pointer-events: none; transition: transform .4s; }
+/* information bar: clock | SPEED | weather */
+#speedBox { position: absolute; top: 3vh; left: 50%; transform: translateX(-50%); text-align: center; cursor: pointer; transition: transform .4s; }
+.infoSide { position: absolute; top: 4.4vh; cursor: pointer; white-space: nowrap; text-shadow: 3px 3px 0 var(--navy); }
+#clockBox { right: calc(50% + 21vh); text-align: right; }
+#wxBox { left: calc(50% + 21vh); text-align: left; }
+.infoSide .big { font-size: 4.6vh; line-height: 1; }
+.infoSide .s { font-size: 1.3vh; color: var(--gold); margin-top: 1vh; }
+#clock .ampm, #temp .tu { font-size: 1.8vh; margin-left: .5vh; }
+#wx { margin-right: 1vh; }
+#lights { margin-left: 1.4vh; color: #9ff0b0; }
+.flash { animation: flash 1.6s steps(4); }
+@keyframes flash { 0%, 40% { background: var(--gold); color: var(--navy); } 100% { background: transparent; } }
 #speed { font-size: 9vh; line-height: 1; text-shadow: 5px 5px 0 var(--navy); }
-body.nav #speedBox { transform: scale(0.75); }
+body.nav #speedBox { transform: translateX(-50%) scale(0.8); }
 
 #left { left: 2.5vw; top: 20vh; width: 23vw; }
 body.nav #left { width: 28vw; }

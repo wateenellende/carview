@@ -133,6 +133,7 @@ window.addEventListener('message', (e) => {
   const m = e.data || {};
   if (!m.carview) return;
   if (!SANDBOX) document.body.dataset.scene = ((document.body.dataset.scene || '') + ' ' + m.type + (m.message ? ':' + m.message.slice(0, 160) : '')).slice(-600);   // desktop preview: record for debugging
+  if (m.type === 'ready') document.body.classList.add('sceneReady');     // the scene is drawing: fade it in
   if (m.type === 'vehicleRect') vehicleRect = m.rect;
   else if (m.type === 'error') {
     console.log('scene error (' + m.where + '): ' + m.message);
@@ -144,11 +145,36 @@ window.addEventListener('message', (e) => {
   }
 });
 
-// tap on the vehicle = next vehicle of this theme
-$('tapLayer').addEventListener('click', (e) => {
-  const r = vehicleRect, pad = 14;
-  if (r && e.clientX >= r.x - pad && e.clientX <= r.x + r.w + pad && e.clientY >= r.y - pad && e.clientY <= r.y + r.h + pad) nextVehicle();
-});
+// Everywhere on the dashboard: a TAP switches (format, next car), HOLDING opens the settings for that item.
+const HOLD_MS = 550;
+function pressable(el, onTap, onHold, inside) {
+  let timer = null, held = false;
+  el.addEventListener('pointerdown', (e) => {
+    if (inside && !inside(e)) return;
+    held = false; clearTimeout(timer);
+    timer = setTimeout(() => { held = true; timer = null; if (navigator.vibrate) navigator.vibrate(20); onHold(e); }, HOLD_MS);
+  });
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  el.addEventListener('pointerup', cancel); el.addEventListener('pointerleave', cancel); el.addEventListener('pointercancel', cancel);
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (held) { held = false; return; }
+    if (!inside || inside(e)) onTap(e);
+  });
+}
+function openSettingsAt(id) {
+  openSettings();
+  const el = $(id);
+  if (!el) return;
+  el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+// the vehicle: tap = next vehicle of this theme, hold = its model and colour
+const onVehicle = (e) => { const r = vehicleRect, pad = 14; return r && e.clientX >= r.x - pad && e.clientX <= r.x + r.w + pad && e.clientY >= r.y - pad && e.clientY <= r.y + r.h + pad; };
+pressable($('tapLayer'), () => nextVehicle(), () => openSettingsAt('setVehicle'), onVehicle);
+pressable($('clockBox'), () => { cfg.clock12 = !cfg.clock12; saveCfg(); renderClock(); toast(cfg.clock12 ? '12-hour clock' : '24-hour clock'); }, () => openSettingsAt('setDisplay'));
+pressable($('wxBox'), () => { cfg.tempF = !cfg.tempF; saveCfg(); renderStatus(); toast(cfg.tempF ? 'Fahrenheit' : 'Celsius'); }, () => openSettingsAt('setDisplay'));
+pressable($('speedBox'), () => { cfg.mph = !cfg.mph; saveCfg(); renderStatus(); toast(cfg.mph ? 'Miles per hour' : 'Kilometres per hour'); }, () => openSettingsAt('setDisplay'));
 
 // ------------------------------------------------------------------ turns (road bends in the scene)
 // Upcoming turn: distance from Google Maps' text ("300 m", "1,2 km") and direction read from its arrow picture
@@ -303,7 +329,7 @@ function updateTurnRate(bearing) {
   if (turn.lastBearing != null && now > turn.lastAt) {
     const delta = ((bearing - turn.lastBearing + 540) % 360) - 180;          // degrees, + = turning right
     const rate = Math.max(-45, Math.min(45, delta / ((now - turn.lastAt) / 1000)));
-    turn.rate = turn.rate * 0.55 + rate * 0.45;                              // smooth out GPS jitter
+    turn.rate = turn.rate * 0.25 + rate * 0.75;                              // light smoothing: follow the turn quickly
   }
   turn.lastBearing = bearing; turn.lastAt = now;
 }
@@ -322,7 +348,8 @@ function sceneState() {
   return {
     speed: car.speed, lights: car.lights, doors: car.doors, nav: navState(), sky: skyMode(), openView: openView(),
     wx: weather(), colour: vehicleColour(t && currentVehicle(t)), bearing: car.bearing,
-    turnRate: window.DEMO_RATE != null ? window.DEMO_RATE : turn.rate, steer: null,
+    // no fresh GPS heading for a while (GPS gives one a second): let the old turn rate fade instead of lingering
+    turnRate: window.DEMO_RATE != null ? window.DEMO_RATE : turn.rate * Math.max(0, Math.min(1, 1 - (performance.now() - turn.lastAt - 1300) / 1500)), steer: null,
   };
 }
 
@@ -340,22 +367,44 @@ function frame(now) {
   document.body.classList.toggle('open', openView());
   car.shownSpeed += (car.speed - car.shownSpeed) * Math.min(1, dt * 5);
   const pad = hud.speedPad || 0;
-  $('speed').textContent = !car.speedKnown ? '-'.repeat(Math.max(2, pad)) : String(Math.round(car.shownSpeed)).padStart(pad, '0');
+  const shown = cfg.mph ? car.shownSpeed * KMH_TO_MPH : car.shownSpeed;
+  $('speed').textContent = !car.speedKnown ? '-'.repeat(Math.max(2, pad)) : String(Math.round(shown)).padStart(pad, '0');
   tickMusicBar();
 }
 requestAnimationFrame(frame);
 
 // ------------------------------------------------------------------ HUD
 const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+// ------------------------------------------------------------------ information bar: clock | speed | weather
+const KMH_TO_MPH = 0.621371;
+function weatherWords(code) {
+  if (code == null || code < 0) return '';
+  if (code === 0) return 'Clear'; if (code === 1) return 'Mostly clear'; if (code === 2) return 'Partly cloudy';
+  if (code === 3) return 'Cloudy'; if (code === 45 || code === 48) return 'Fog';
+  if (code >= 51 && code <= 57) return 'Drizzle'; if (code === 61 || code === 80) return 'Light rain';
+  if (code === 63 || code === 81) return 'Rain'; if (code === 65 || code === 82) return 'Heavy rain';
+  if (code === 66 || code === 67) return 'Freezing rain'; if (code >= 71 && code <= 77) return 'Snow';
+  if (code === 85 || code === 86) return 'Snow showers'; if (code >= 95) return 'Thunderstorm';
+  return '';
+}
+function renderClock() {
+  const d = new Date(), h = d.getHours(), mm = String(d.getMinutes()).padStart(2, '0');
+  $('clock').innerHTML = cfg.clock12 ? (h % 12 || 12) + ':' + mm + '<span class="ampm">' + (h < 12 ? 'AM' : 'PM') + '</span>' : h + ':' + mm;
+  $('date').textContent = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+setInterval(renderClock, 5000);
 function renderStatus() {
   $('sat').textContent = (car.used == null ? '--' : car.used) + (car.used === 1 ? ' satellite' : ' satellites');
-  $('dir').textContent = car.bearing == null ? '--' : COMPASS[Math.round(car.bearing / 45) % 8];
-  $('temp').innerHTML = (car.temp ? Math.round(car.temp.c) : '--') + '&deg;C';
-  $('wx').textContent = wxIcon(weather());
+  const t = car.temp, wx = weather();
+  const deg = t ? (cfg.tempF ? t.c * 9 / 5 + 32 : t.c) : null;
+  $('temp').innerHTML = (deg == null ? '--' : Math.round(deg)) + '°<span class="tu">' + (cfg.tempF ? 'F' : 'C') + '</span>';
+  $('wx').textContent = wxIcon(wx);
   $('wx').hidden = !$('wx').textContent;
-  const l = $('lights');
-  l.textContent = 'Lights ' + (car.lights == null ? '--' : car.lights ? 'on' : 'off');
-  l.className = car.lights ? 'on' : 'off';
+  const wind = wx.wind >= 5 ? Math.round(cfg.mph ? wx.wind * KMH_TO_MPH : wx.wind) + (cfg.mph ? ' mph ' : ' km/h ') + COMPASS[Math.round(((wx.windDir % 360) + 360) % 360 / 45) % 8] : '';
+  $('wxSub').textContent = [t ? weatherWords(t.code) : '', wind].filter(Boolean).join(' · ');
+  $('lights').hidden = car.lights !== true;            // a telltale, like on the dashboard: only when they're on
+  $('unit').textContent = cfg.mph ? 'mph' : 'km/h';
+  renderClock();
   const w = doorWarning();
   $('warn').hidden = !w;
   if (w) $('warn').textContent = (hud.warnIcon ? '⚠ ' : '') + w;
@@ -609,6 +658,24 @@ function matchesVehicle(vehicle, query) {
   return text.includes(query.trim().toLocaleLowerCase());
 }
 
+/** A row of simple choice buttons: options = [[value, label], ...]. */
+function choiceRow(row, options, current, pick) {
+  const el = $(row); el.innerHTML = '';
+  for (const [value, label] of options) {
+    const b = document.createElement('span');
+    b.className = 'btn wide' + (value === current ? ' on' : '');
+    b.textContent = label;
+    b.onclick = () => { pick(value); saveCfg(); renderStatus(); openSettings(); };
+    el.appendChild(b);
+  }
+}
+function renderDisplaySettings() {
+  choiceRow('clockRow', [[false, '24-hour  (14:05)'], [true, '12-hour  (2:05 PM)']], !!cfg.clock12, (v) => { cfg.clock12 = v; });
+  choiceRow('tempRow', [[false, '°C  Celsius'], [true, '°F  Fahrenheit']], !!cfg.tempF, (v) => { cfg.tempF = v; });
+  choiceRow('speedRow', [[false, 'km/h'], [true, 'mph']], !!cfg.mph, (v) => { cfg.mph = v; });
+}
+tap('dateSettings', () => call('dateSettings'));
+
 function chooser(row, items, isOn, pick) {
   const el = $(row); el.innerHTML = '';
   items.forEach((it) => {
@@ -718,6 +785,7 @@ function renderVehicleCards(t, selected, choices) {
 $('vehicleSearch').addEventListener('input', openSettings);
 
 function openSettings() {
+  renderDisplaySettings();
   loadPackages();
   const t = currentTheme(), v = t && currentVehicle(t);
   // colour is remembered per vehicle

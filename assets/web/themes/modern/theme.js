@@ -543,7 +543,8 @@ function create(canvas, api) {
       const kb = first ? 1 : Math.min(1, dt * 2);
       const kNow = st.steer != null ? Math.tan(st.steer * Math.PI / 180) / 2.6
         : (v > 2 ? ((st.turnRate || 0) * Math.PI / 180) / v : 0);
-      bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * kb;
+      const kf = first ? 1 : Math.min(1, dt * 5);                   // the road under the car follows the GPS quickly
+      bend.k += (Math.max(-0.09, Math.min(0.09, kNow)) - bend.k) * kf;
       // show the turn ~20 s ahead at the current speed (at least 120 m; the road ahead is 270 m long)
       const lead = Math.max(120, Math.min(260, v * 20));
       const rbOn = updateRoundabout(st, v, dt, lead);                  // a roundabout replaces the bend/side road
@@ -579,7 +580,7 @@ function create(canvas, api) {
         g.visible = !cut || g.userData.s < rbState.entryS - 3;       // none standing in the roundabout
       }
       // the car sits on the road, its nose following the road just ahead (right turn = negative yaw)
-      bend.yaw += (-pathAt(4).h - bend.yaw) * kb;
+      bend.yaw += (-pathAt(4).h - bend.yaw) * kf;
 
       // car: shrinks and moves ahead while navigating; doors, lights, wheels
       const kk = first ? 1 : Math.min(1, dt * 3);

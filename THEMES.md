@@ -261,8 +261,8 @@ Your stylesheet replaces the panel styling completely. Style these elements (all
 
 | element | what it is |
 |---|---|
-| `#status` (`#dir`, `#wx`, `#temp`, `#lights.on/.off`) | top status pill |
-| `#speedBox`, `#speed`, `.unit` | big speed number |
+| `#clockBox` (`#clock`, `.ampm`, `#date`), `#wxBox` (`#wx`, `#temp`, `.tu`, `#wxSub`) | left and right of the speed: clock and weather (`.infoSide .big` / `.s`) |
+| `#speedBox`, `#speed`, `.unit` (`#unit`, `#lights`) | big speed number; `#lights` is a telltale shown only while the headlights are on |
 | `#left`, `#dests`, `.tile`, `.ico`, `.nm`, `.sub` | destination tiles |
 | `#turn`, `.turnBox`, `#turnIcon`, `#turnArrow`, `#turnDist`, `#turnStreet`, `#turnSub`, `#navClose`, `#navStop` | next-turn card while navigating |
 | `#right`, `#art`, `#title`, `#artist`, `#bar`, `#barFill`, `.ctl`, `#play.hot` | music card |

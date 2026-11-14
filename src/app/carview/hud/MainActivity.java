@@ -100,7 +100,8 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         web = new WebView(this);
-        web.setBackgroundColor(Color.rgb(11, 15, 21));
+        web.setBackgroundColor(Color.rgb(26, 27, 32));            // = the car's status bar, so starting up doesn't flash
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.rgb(26, 27, 32)));
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -800,6 +801,7 @@ public class MainActivity extends Activity {
             });
         }
         @JavascriptInterface public void settings(String token) { if (!ok(token)) return; h.post(() -> start(new Intent(Settings.ACTION_SETTINGS))); }
+        @JavascriptInterface public void dateSettings(String token) { if (!ok(token)) return; h.post(() -> start(new Intent(Settings.ACTION_DATE_SETTINGS))); }
         @JavascriptInterface public void mediaAccess(String token) { if (!ok(token)) return;
             h.post(() -> start(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
         }
